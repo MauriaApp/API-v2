@@ -12,10 +12,10 @@ const start = async () => {
         await app.register(swagger, {
             openapi: {
                 info: {
-                    title: "Mon API Fastify",
+                    title: "API Mauria",
                     description:
-                        "API propre avec Fastify, TypeScript et Swagger",
-                    version: "1.0.0",
+                        "API propre avec Fastify, TypeScript et Swagger. Toutes les routes sont documentées ici, avec exemples de requêtes et réponses.",
+                    version: "2.0.0",
                 },
             },
         });
