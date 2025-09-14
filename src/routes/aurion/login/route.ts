@@ -1,14 +1,10 @@
 import { FastifyInstance } from "fastify";
 import { AurionLogin } from "./login";
 import { SessionManager } from "../utils/session-manager";
-
-interface LoginRequest {
-    email: string;
-    password: string;
-}
+import { IdRequest } from "../../../types/aurion";
 
 export default async function loginRoute(fastify: FastifyInstance) {
-    fastify.post<{ Body: LoginRequest }>(
+    fastify.post<{ Body: IdRequest }>(
         "/aurion/login",
         {
             schema: {
