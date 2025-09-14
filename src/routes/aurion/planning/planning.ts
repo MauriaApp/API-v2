@@ -123,7 +123,7 @@ export class AurionPlanning {
         await this.sessionManager.login(email, password);
         await this.initializeSession();
         await this.postMainSidebar();
-        const now = new Date();
+        const now = new Date(start);
         const today = now.toLocaleDateString("fr-FR", {
             day: "2-digit",
             month: "2-digit",

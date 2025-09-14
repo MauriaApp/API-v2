@@ -9,21 +9,22 @@ export async function planningRoute(fastify: FastifyInstance) {
         {
             schema: {
                 description:
-                    "ATTENTION: Les timestamps sont en MILLISECONDES !",
+                    "Timestamp optionnel. Si pas de temps, start = aujourd'hui, end = aujourd'hui + 2 mois. ATTENTION: Les timestamps sont en MILLISECONDES !",
                 body: {
                     type: "object",
                     properties: {
                         email: { type: "string" },
                         password: { type: "string" },
-                        startTimestamp: { type: "number" },
-                        endTimestamp: { type: "number" },
+                        startTimestamp: {
+                            type: "number",
+                            description: "Timestamp en millisecondes",
+                        },
+                        endTimestamp: {
+                            type: "number",
+                            description: "Timestamp en millisecondes",
+                        },
                     },
-                    required: [
-                        "email",
-                        "password",
-                        "startTimestamp",
-                        "endTimestamp",
-                    ],
+                    required: ["email", "password"],
                 },
                 response: {
                     200: {
@@ -72,12 +73,19 @@ export async function planningRoute(fastify: FastifyInstance) {
             const sessionManager = new SessionManager();
             const aurionClient = new AurionPlanning(sessionManager);
 
+            const start = request.body.startTimestamp
+                ? request.body.startTimestamp
+                : Date.now();
+            const end = request.body.endTimestamp
+                ? request.body.endTimestamp
+                : start + 60 * 24 * 60 * 60 * 1000; // + 2 months
+
             try {
                 const planning = await aurionClient.getPlanning(
                     request.body.email,
                     request.body.password,
-                    request.body.startTimestamp,
-                    request.body.endTimestamp
+                    start,
+                    end
                 );
                 return { success: true, data: planning };
             } catch (error) {

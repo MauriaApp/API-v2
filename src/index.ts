@@ -5,6 +5,7 @@ import aurionRoutes from "./routes/aurion/index";
 import supaDataRoutes from "./routes/supa-data/index";
 
 import dotenv from "dotenv";
+import fastifyCors from "@fastify/cors";
 const env = process.env.TS_NODE_DEV;
 if (env) {
     console.log("-- Running in development mode");
@@ -19,6 +20,12 @@ const app = Fastify({ logger: false });
 
 const start = async () => {
     try {
+        // Register CORS plugin
+        await app.register(fastifyCors, {
+            origin: true,
+            credentials: true,
+        });
+
         // Enregistrer Swagger en premier
         await app.register(swagger, {
             openapi: {
