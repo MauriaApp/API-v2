@@ -1,10 +1,8 @@
 import Fastify from "fastify";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
-import loginRoute from "./routes/aurion/login/route";
-import notesRoute from "./routes/aurion/notes/route";
-import planningRoute from "./routes/aurion/planning/route";
-import absencesRoute from "./routes/aurion/absences/route";
+import aurionRoutes from "./routes/aurion/index";
+import supaDataRoutes from "./routes/supa-data/index";
 
 const app = Fastify({ logger: false });
 
@@ -22,10 +20,14 @@ const start = async () => {
             },
         });
 
-        await app.register(loginRoute);
-        await app.register(notesRoute);
-        await app.register(planningRoute);
-        await app.register(absencesRoute);
+        // Routes Aurion
+        await Promise.all(
+            Object.values(aurionRoutes).map((route) => app.register(route))
+        );
+        // Routes SupaData
+        await Promise.all(
+            Object.values(supaDataRoutes).map((route) => app.register(route))
+        );
 
         await app.register(swaggerUi, {
             routePrefix: "/docs",
@@ -34,23 +36,6 @@ const start = async () => {
                 deepLinking: false,
             },
         });
-
-        // Déclarer les routes APRÈS l'enregistrement des plugins
-        app.get(
-            "/ping",
-            {
-                schema: {
-                    response: {
-                        200: {
-                            type: "object",
-                            properties: { pong: { type: "boolean" } },
-                            required: ["pong"],
-                        },
-                    },
-                },
-            },
-            async () => ({ pong: true })
-        );
 
         await app.listen({ port: 3000 });
         console.log("Server running @ http://localhost:3000");

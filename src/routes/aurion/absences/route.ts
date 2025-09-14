@@ -3,7 +3,7 @@ import { SessionManager } from "../utils/session-manager";
 import { IdRequest } from "../../../types/aurion";
 import { AurionAbsences } from "./absences";
 
-export default async function absencesRoute(fastify: FastifyInstance) {
+export async function absencesRoute(fastify: FastifyInstance) {
     fastify.post<{ Body: IdRequest }>(
         "/aurion/absences",
         {

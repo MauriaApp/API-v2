@@ -1,28 +1,19 @@
 import { FastifyInstance } from "fastify";
-import { AurionLogin } from "./login";
-import { SessionManager } from "../utils/session-manager";
-import { IdRequest } from "../../../types/aurion";
+import { supabase } from "./utils/supabase";
 
-export async function loginRoute(fastify: FastifyInstance) {
-    fastify.post<{ Body: IdRequest }>(
-        "/aurion/login",
+export async function messagesRoute(fastify: FastifyInstance) {
+    fastify.get(
+        "/messages",
         {
             schema: {
-                body: {
-                    type: "object",
-                    properties: {
-                        email: { type: "string" },
-                        password: { type: "string" },
-                    },
-                    required: ["email", "password"],
-                },
                 response: {
                     200: {
                         type: "object",
                         properties: {
-                            success: { type: "boolean" },
+                            title: { type: "string" },
+                            message: { type: "string" },
                         },
-                        required: ["success"],
+                        required: ["title", "message"],
                     },
                     500: {
                         type: "object",
@@ -36,15 +27,9 @@ export async function loginRoute(fastify: FastifyInstance) {
             },
         },
         async (request, reply) => {
-            const sessionManager = new SessionManager();
-            const aurionClient = new AurionLogin(sessionManager);
-
             try {
-                await aurionClient.login(
-                    request.body.email,
-                    request.body.password
-                );
-                return { success: true };
+                const messages = await getMessages();
+                return messages;
             } catch (error) {
                 return reply.status(500).send({
                     success: false,
@@ -57,3 +42,20 @@ export async function loginRoute(fastify: FastifyInstance) {
         }
     );
 }
+
+// Récupérer les messages depuis Firebase
+export const getMessages = async () => {
+    try {
+        const { data, error } = await supabase.from("messages").select("*");
+        if (error) throw error;
+
+        const messages = {
+            title: data[0].titre,
+            message: data[0].description,
+        };
+
+        return messages;
+    } catch (error) {
+        throw new Error("Failed to fetch messages: " + error);
+    }
+};

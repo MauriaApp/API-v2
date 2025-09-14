@@ -3,7 +3,7 @@ import { SessionManager } from "../utils/session-manager";
 import { AurionPlanning } from "./planning";
 import { PlanningRequest } from "../../../types/aurion";
 
-export default async function planningRoute(fastify: FastifyInstance) {
+export async function planningRoute(fastify: FastifyInstance) {
     fastify.post<{ Body: PlanningRequest }>(
         "/aurion/planning",
         {

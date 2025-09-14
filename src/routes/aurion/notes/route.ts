@@ -3,7 +3,7 @@ import { SessionManager } from "../utils/session-manager";
 import { AurionNotes } from "./notes";
 import { IdRequest } from "../../../types/aurion";
 
-export default async function notesRoute(fastify: FastifyInstance) {
+export async function notesRoute(fastify: FastifyInstance) {
     fastify.post<{ Body: IdRequest }>(
         "/aurion/notes",
         {
