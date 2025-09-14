@@ -84,15 +84,7 @@ export class PageParser {
     static parseNotes(body: string): any[] {
         const noteRows = body.match(/<tr[^>]*>([\s\S]*?)<\/tr>/g);
         if (!noteRows) {
-            return [
-                {
-                    date: "ou pas encore de note.",
-                    code: "",
-                    epreuve: "Erreur",
-                    note: ":(",
-                    coefficient: "",
-                },
-            ];
+            throw new Error("Aucune note trouvée");
         }
         return noteRows.map((row) => {
             const cells = row.match(/<td[^>]*>([\s\S]*?)<\/td>/g) || [];
@@ -126,16 +118,7 @@ export class PageParser {
     static parseAbsences(body: string): any[] {
         const absRows = body.match(/<tr data-ri="[^>]*>([\s\S]*?)<\/tr>/g);
         if (!absRows) {
-            return [
-                {
-                    date: "",
-                    type: "Erreur",
-                    duree: "",
-                    heure: ":(",
-                    classe: "ou pas d'absences",
-                    prof: "",
-                },
-            ];
+            throw new Error("Aucune absence trouvée");
         }
         return absRows.map((row) => {
             const date = (row.match(
