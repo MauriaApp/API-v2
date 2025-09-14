@@ -4,6 +4,17 @@ import swaggerUi from "@fastify/swagger-ui";
 import aurionRoutes from "./routes/aurion/index";
 import supaDataRoutes from "./routes/supa-data/index";
 
+import dotenv from "dotenv";
+const env = process.env.TS_NODE_DEV;
+if (env) {
+    console.log("-- Running in development mode");
+}
+const envFile = env ? ".env.dev" : ".env";
+dotenv.config({ path: envFile, override: true, quiet: true });
+
+const port = process.env.PORT || 8080;
+const host = process.env.HOST || "0.0.0.0";
+
 const app = Fastify({ logger: false });
 
 const start = async () => {
@@ -37,9 +48,9 @@ const start = async () => {
             },
         });
 
-        await app.listen({ port: 3000 });
-        console.log("Server running @ http://localhost:3000");
-        console.log("Swagger UI @ http://localhost:3000/docs");
+        await app.listen({ port: Number(port), host });
+        console.log(`Server listening at http://${host}:${port}`);
+        console.log(`Swagger UI at http://${host}:${port}/docs`);
     } catch (err) {
         app.log.error(err);
         process.exit(1);
