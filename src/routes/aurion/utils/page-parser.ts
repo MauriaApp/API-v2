@@ -122,4 +122,36 @@ export class PageParser {
         // À implémenter selon structure Planning renvoyée (JSON ou HTML) comme dans ton postPlan
         return body; // placeholder simple
     }
+
+    static parseAbsences(body: string): any[] {
+        const absRows = body.match(/<tr data-ri="[^>]*>([\s\S]*?)<\/tr>/g);
+        if (!absRows) {
+            return [
+                {
+                    date: "",
+                    type: "Erreur",
+                    duree: "",
+                    heure: ":(",
+                    classe: "ou pas d'absences",
+                    prof: "",
+                },
+            ];
+        }
+        return absRows.map((row) => {
+            const date = (row.match(
+                /<td role="gridcell" style="text-align: left">([^<]+)<\/td>/
+            ) || [, ""])[1];
+            const cells = [
+                ...row.matchAll(/<td role="gridcell">([^<]*)<\/td>/g),
+            ].map((m) => m[1]);
+            return {
+                date,
+                type: cells[0] || "",
+                duree: cells[1] || "",
+                heure: cells[2] || "",
+                classe: cells[3] || "",
+                prof: cells[4] || "",
+            };
+        });
+    }
 }

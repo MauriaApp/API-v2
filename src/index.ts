@@ -4,6 +4,7 @@ import swaggerUi from "@fastify/swagger-ui";
 import loginRoute from "./routes/aurion/login/route";
 import notesRoute from "./routes/aurion/notes/route";
 import planningRoute from "./routes/aurion/planning/route";
+import absencesRoute from "./routes/aurion/absences/route";
 
 const app = Fastify({ logger: false });
 
@@ -24,6 +25,7 @@ const start = async () => {
         await app.register(loginRoute);
         await app.register(notesRoute);
         await app.register(planningRoute);
+        await app.register(absencesRoute);
 
         await app.register(swaggerUi, {
             routePrefix: "/docs",
