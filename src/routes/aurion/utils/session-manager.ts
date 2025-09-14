@@ -41,7 +41,5 @@ export class SessionManager {
         if (!setCookie || !setCookie.length) {
             throw new Error("Aucun cookie de session reçu");
         }
-
-        // Le cookie est automatiquement stocké dans cookieJar par got, donc pas besoin d’extraire manuellement ici.
     }
 }

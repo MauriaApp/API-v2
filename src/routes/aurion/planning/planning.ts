@@ -5,7 +5,6 @@ export class AurionPlanning {
     private sessionManager: SessionManager;
 
     private viewState = "";
-    private formId = "";
     private menuid = "0";
     private idInit = "";
     private formIdPlanning = "";
@@ -23,7 +22,6 @@ export class AurionPlanning {
         );
         const body = res.body;
         this.viewState = PageParser.parseViewState(body);
-        this.formId = PageParser.parseFormId(body);
         this.idInit = PageParser.parseIdInit(body);
     }
 

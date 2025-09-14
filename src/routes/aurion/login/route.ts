@@ -1,5 +1,11 @@
-import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { LoginRequest, aurionLogin } from "./login";
+import { FastifyInstance } from "fastify";
+import { AurionLogin } from "./login";
+import { SessionManager } from "../utils/session-manager";
+
+interface LoginRequest {
+    email: string;
+    password: string;
+}
 
 export default async function loginRoute(fastify: FastifyInstance) {
     fastify.post<{ Body: LoginRequest }>(
@@ -18,24 +24,39 @@ export default async function loginRoute(fastify: FastifyInstance) {
                     200: {
                         type: "object",
                         properties: {
-                            sessionId: { type: "string" },
-                            statusCode: { type: "number" },
+                            success: { type: "boolean" },
                         },
-                        required: ["sessionId", "statusCode"],
+                        required: ["success"],
+                    },
+                    500: {
+                        type: "object",
+                        properties: {
+                            success: { type: "boolean" },
+                            error: { type: "string" },
+                        },
+                        required: ["success", "error"],
                     },
                 },
             },
         },
-        async (
-            request: FastifyRequest<{ Body: LoginRequest }>,
-            reply: FastifyReply
-        ) => {
+        async (request, reply) => {
+            const sessionManager = new SessionManager();
+            const aurionClient = new AurionLogin(sessionManager);
+
             try {
-                const { email, password } = request.body;
-                const result = await aurionLogin(email, password);
-                return reply.send(result);
+                await aurionClient.login(
+                    request.body.email,
+                    request.body.password
+                );
+                return { success: true };
             } catch (error) {
-                return reply.status(500).send({ error: "Login failed" });
+                return reply.status(500).send({
+                    success: false,
+                    error:
+                        error instanceof Error
+                            ? error.message
+                            : "Unknown error",
+                });
             }
         }
     );
