@@ -48,7 +48,7 @@ export class PageParser {
         return snippet.substring(idxFrom + from.length, idxTo);
     }
 
-    static parseFormIdNote(body: string): string {
+    static parseFormIdGrade(body: string): string {
         const to = "Date Ascending";
         const snippet = body.substring(
             body.indexOf(to) - 400,
@@ -59,7 +59,7 @@ export class PageParser {
         const idxFrom = snippet.indexOf(from);
         const idxTo = snippet.indexOf(toDelim);
         if (idxFrom === -1 || idxTo === -1)
-            throw new Error("FormIdNote non trouvé");
+            throw new Error("FormIdGrade non trouvé");
         return snippet.substring(idxFrom + from.length, idxTo);
     }
 
@@ -81,12 +81,12 @@ export class PageParser {
             .replace(/"/g, "");
     }
 
-    static parseNotes(body: string): any[] {
-        const noteRows = body.match(/<tr[^>]*>([\s\S]*?)<\/tr>/g);
-        if (!noteRows) {
-            throw new Error("Aucune note trouvée");
+    static parseGrades(body: string): any[] {
+        const gradeRows = body.match(/<tr[^>]*>([\s\S]*?)<\/tr>/g);
+        if (!gradeRows) {
+            throw new Error("Aucune grade trouvée");
         }
-        return noteRows.map((row) => {
+        return gradeRows.map((row) => {
             const cells = row.match(/<td[^>]*>([\s\S]*?)<\/td>/g) || [];
             return {
                 date: PageParser.extractSpan(cells[0]),

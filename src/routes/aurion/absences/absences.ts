@@ -78,7 +78,6 @@ export class AurionAbsences {
             }
         );
 
-        // Fetch MesAbsences.xhtml, puis update viewState, idInit, formIdNote
         const absPage = await this.sessionManager.client.get(
             "https://aurion.junia.com/faces/MesAbsences.xhtml",
             {

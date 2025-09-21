@@ -75,7 +75,8 @@ export async function planningRoute(fastify: FastifyInstance) {
 
             const start = request.body.startTimestamp
                 ? request.body.startTimestamp
-                : Date.now();
+                : Date.now() - 7 * 24 * 60 * 60 * 1000; // -1 semaine
+
             const end = request.body.endTimestamp
                 ? request.body.endTimestamp
                 : start + 60 * 24 * 60 * 60 * 1000; // + 2 months

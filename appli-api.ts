@@ -1,7 +1,7 @@
 // futur fichier api.ts pour les appels API
 
 import fetch from "isomorphic-fetch";
-import { MauriaNoteType } from "../../types/note";
+import { MauriaGradeType } from "../../types/grade";
 
 const API_URL =
     process.env.NODE_ENV === "production"
@@ -68,18 +68,20 @@ export async function fetchPlanning() {
     return null;
 }
 
-export async function fetchNotes(): Promise<{ data: MauriaNoteType[] | null }> {
-    const oldNotes = getLocalStorage<MauriaNoteType[]>("notes") || [];
-    const result = await postRequest<MauriaNoteType[]>("/aurion/notes");
+export async function fetchGrades(): Promise<{
+    data: MauriaGradeType[] | null;
+}> {
+    const oldGrades = getLocalStorage<MauriaGradeType[]>("grades") || [];
+    const result = await postRequest<MauriaGradeType[]>("/aurion/grades");
     if (result.success && result.data) {
-        const newNotes = result.data.filter(
-            (note) => !oldNotes.some((old) => old.code === note.code)
+        const newGrades = result.data.filter(
+            (grade) => !oldGrades.some((old) => old.code === grade.code)
         );
-        setLocalStorage("newNotes", newNotes);
-        setLocalStorage("notes", result.data);
+        setLocalStorage("newGrades", newGrades);
+        setLocalStorage("grades", result.data);
         return { data: result.data };
     }
-    setLocalStorage("notes", []);
+    setLocalStorage("grades", []);
     return { data: null };
 }
 

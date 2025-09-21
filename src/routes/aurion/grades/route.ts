@@ -1,11 +1,11 @@
 import { FastifyInstance } from "fastify";
 import { SessionManager } from "../utils/session-manager";
-import { AurionNotes } from "./notes";
 import { IdRequest } from "../../../types/aurion";
+import { AurionGrades } from "./grades";
 
-export async function notesRoute(fastify: FastifyInstance) {
+export async function gradesRoute(fastify: FastifyInstance) {
     fastify.post<{ Body: IdRequest }>(
-        "/aurion/notes",
+        "/aurion/grades",
         {
             schema: {
                 body: {
@@ -54,14 +54,14 @@ export async function notesRoute(fastify: FastifyInstance) {
         },
         async (request, reply) => {
             const sessionManager = new SessionManager();
-            const aurionClient = new AurionNotes(sessionManager);
+            const aurionClient = new AurionGrades(sessionManager);
 
             try {
-                const notes = await aurionClient.getAllNotes(
+                const grades = await aurionClient.getAllGrades(
                     request.body.email,
                     request.body.password
                 );
-                return { success: true, data: notes };
+                return { success: true, data: grades };
             } catch (error) {
                 return reply.status(500).send({
                     success: false,

@@ -1,14 +1,14 @@
 import { SessionManager } from "../utils/session-manager";
 import { PageParser } from "../utils/page-parser";
 
-export class AurionNotes {
+export class AurionGrades {
     private sessionManager: SessionManager;
 
     private viewState = "";
     private formId = "";
     private menuid = "";
     private idInit = "";
-    private formIdNote = "";
+    private formIdGrade = "";
 
     constructor(sessionManager: SessionManager) {
         this.sessionManager = sessionManager;
@@ -94,21 +94,21 @@ export class AurionNotes {
 
         this.viewState = PageParser.parseViewState(getRes.body);
         this.idInit = PageParser.parseIdInit(getRes.body);
-        this.formIdNote = PageParser.parseFormIdNote(getRes.body);
+        this.formIdGrade = PageParser.parseFormIdGrade(getRes.body);
     }
 
-    async postNote(): Promise<any[]> {
+    async postGrade(): Promise<any[]> {
         const postData = new URLSearchParams({
             "javax.faces.partial.ajax": "true",
-            "javax.faces.source": `form:${this.formIdNote}`,
-            "javax.faces.partial.execute": `form:${this.formIdNote}`,
-            "javax.faces.partial.render": `form:${this.formIdNote}`,
-            [`form:${this.formIdNote}`]: `form:${this.formIdNote}`,
-            [`form:${this.formIdNote}_pagination`]: "true",
-            [`form:${this.formIdNote}_first`]: "0",
-            [`form:${this.formIdNote}_rows`]: "20000",
-            [`form:${this.formIdNote}_skipChildren`]: "true",
-            [`form:${this.formIdNote}_encodeFeature`]: "true",
+            "javax.faces.source": `form:${this.formIdGrade}`,
+            "javax.faces.partial.execute": `form:${this.formIdGrade}`,
+            "javax.faces.partial.render": `form:${this.formIdGrade}`,
+            [`form:${this.formIdGrade}`]: `form:${this.formIdGrade}`,
+            [`form:${this.formIdGrade}_pagination`]: "true",
+            [`form:${this.formIdGrade}_first`]: "0",
+            [`form:${this.formIdGrade}_rows`]: "20000",
+            [`form:${this.formIdGrade}_skipChildren`]: "true",
+            [`form:${this.formIdGrade}_encodeFeature`]: "true",
             form: "form",
             "form:largeurDivCenter": "1620",
             "form:messagesRubriqueInaccessible": "",
@@ -121,13 +121,13 @@ export class AurionNotes {
             "form:input-nombre-fin": "",
             "form:calendarDebut_input": "",
             "form:calendarFin_input": "",
-            [`form:${this.formIdNote}_reflowDD`]: "0_0",
-            [`form:${this.formIdNote}:j_idt273:filter`]: "",
-            [`form:${this.formIdNote}:j_idt275:filter`]: "",
-            [`form:${this.formIdNote}:j_idt277:filter`]: "",
-            [`form:${this.formIdNote}:j_idt279:filter`]: "",
-            [`form:${this.formIdNote}:j_idt281:filter`]: "",
-            [`form:${this.formIdNote}:j_idt283:filter`]: "",
+            [`form:${this.formIdGrade}_reflowDD`]: "0_0",
+            [`form:${this.formIdGrade}:j_idt273:filter`]: "",
+            [`form:${this.formIdGrade}:j_idt275:filter`]: "",
+            [`form:${this.formIdGrade}:j_idt277:filter`]: "",
+            [`form:${this.formIdGrade}:j_idt279:filter`]: "",
+            [`form:${this.formIdGrade}:j_idt281:filter`]: "",
+            [`form:${this.formIdGrade}:j_idt283:filter`]: "",
             "form:j_idt258_focus": "",
             "form:j_idt258_input": "44323",
             "javax.faces.ViewState": this.viewState,
@@ -144,14 +144,14 @@ export class AurionNotes {
             }
         );
 
-        return PageParser.parseNotes(res.body);
+        return PageParser.parseGrades(res.body);
     }
 
-    async getAllNotes(email: string, password: string): Promise<any[]> {
+    async getAllGrades(email: string, password: string): Promise<any[]> {
         await this.sessionManager.login(email, password);
         await this.initializeSession();
         await this.postMainMenu();
         await this.postMainSidebar();
-        return this.postNote();
+        return this.postGrade();
     }
 }
