@@ -91,15 +91,15 @@ export class PageParser {
             return {
                 date: PageParser.extractSpan(cells[0]),
                 code: PageParser.extractSpan(cells[1]),
-                epreuve: PageParser.extractSpan(cells[2]),
-                note: PageParser.extractSpan(cells[3]),
+                name: PageParser.extractSpan(cells[2]),
+                grade: PageParser.extractSpan(cells[3]),
                 coefficient: PageParser.extractSpan(cells[4]),
-                moyenne: PageParser.extractSpan(cells[5]),
+                average: PageParser.extractSpan(cells[5]),
                 min: PageParser.extractSpan(cells[6]),
                 max: PageParser.extractSpan(cells[7]),
-                mediane: PageParser.extractSpan(cells[8]),
-                ecartType: PageParser.extractSpan(cells[9]),
-                commentaire: PageParser.extractSpan(cells[10]),
+                median: PageParser.extractSpan(cells[8]),
+                standardDeviation: PageParser.extractSpan(cells[9]),
+                comment: PageParser.extractSpan(cells[10]),
             };
         });
     }
@@ -130,10 +130,10 @@ export class PageParser {
             return {
                 date,
                 type: cells[0] || "",
-                duree: cells[1] || "",
-                heure: cells[2] || "",
-                classe: cells[3] || "",
-                prof: cells[4] || "",
+                duration: cells[1] || "",
+                time: cells[2] || "",
+                class: cells[3] || "",
+                teacher: cells[4] || "",
             };
         });
     }
