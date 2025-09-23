@@ -81,10 +81,24 @@ export class PageParser {
             .replace(/"/g, "");
     }
 
+    private static extractSpan(cell?: string): string {
+        if (!cell) return "";
+        const match = cell.match(/<span class="preformatted ">([^<]+)<\/span>/);
+        return match ? match[1]! : "";
+    }
+
+    static parsePlanningData(body: string): any {
+        // À implémenter selon structure Planning renvoyée (JSON ou HTML) comme dans ton postPlan
+        return body; // placeholder simple
+    }
+
     static parseGrades(body: string): any[] {
         const gradeRows = body.match(/<tr[^>]*>([\s\S]*?)<\/tr>/g);
         if (!gradeRows) {
-            throw new Error("Aucune grade trouvée");
+            throw new Error("Erreur: récupération des notes");
+        }
+        if (gradeRows.length === 0) {
+            throw new Error("Erreur: aucune note trouvée");
         }
         return gradeRows.map((row) => {
             const cells = row.match(/<td[^>]*>([\s\S]*?)<\/td>/g) || [];
@@ -104,21 +118,13 @@ export class PageParser {
         });
     }
 
-    private static extractSpan(cell?: string): string {
-        if (!cell) return "";
-        const match = cell.match(/<span class="preformatted ">([^<]+)<\/span>/);
-        return match ? match[1]! : "";
-    }
-
-    static parsePlanningData(body: string): any {
-        // À implémenter selon structure Planning renvoyée (JSON ou HTML) comme dans ton postPlan
-        return body; // placeholder simple
-    }
-
     static parseAbsences(body: string): any[] {
         const absRows = body.match(/<tr data-ri="[^>]*>([\s\S]*?)<\/tr>/g);
         if (!absRows) {
-            throw new Error("Aucune absence trouvée");
+            throw new Error("Erreur: récupération des absences");
+        }
+        if (absRows.length === 0) {
+            throw new Error("Erreur: aucune absence trouvée");
         }
         return absRows.map((row) => {
             const date = (row.match(
@@ -129,11 +135,11 @@ export class PageParser {
             ].map((m) => m[1]);
             return {
                 date,
-                type: cells[0] || "",
-                duration: cells[1] || "",
-                time: cells[2] || "",
-                class: cells[3] || "",
-                teacher: cells[4] || "",
+                type: cells[0],
+                duration: cells[1],
+                time: cells[2],
+                class: cells[3],
+                teacher: cells[4],
             };
         });
     }
