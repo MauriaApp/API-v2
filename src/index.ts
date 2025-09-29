@@ -4,6 +4,9 @@ import swaggerUi from "@fastify/swagger-ui";
 import aurionRoutes from "./routes/aurion/index";
 import supaDataRoutes from "./routes/supa-data/index";
 
+import Sentry from "@sentry/node";
+import "./utils/sentry";
+
 import dotenv from "dotenv";
 import fastifyCors from "@fastify/cors";
 const env = process.env.TS_NODE_DEV;
@@ -17,6 +20,8 @@ const port = process.env.PORT || 8080;
 const host = process.env.HOST || "0.0.0.0";
 
 const app = Fastify({ logger: false });
+
+Sentry.setupFastifyErrorHandler(app as any);
 
 const start = async () => {
     try {
