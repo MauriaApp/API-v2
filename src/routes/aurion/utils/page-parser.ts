@@ -79,9 +79,14 @@ export class PageParser {
         return match ? match[1]! : "";
     }
 
-    static parsePlanningData(body: string): any {
-        // À implémenter selon structure Planning renvoyée (JSON ou HTML) comme dans ton postPlan
-        return body; // placeholder simple
+    static parseSidebarMenuIdForMonPlanning(body: string): string {
+        const regex =
+            /onclick="[^"]*?PrimeFaces\.addSubmitParam\('form',\{'form:sidebar':'form:sidebar','form:sidebar_menuid':'(\d+)'\}[^"]*?"[^>]*?>[^<]*<span class="ui-menuitem-icon ui-icon fa fa-calendar-alt"><\/span><span class="ui-menuitem-text">Mon Planning<\/span>/;
+        const match = body.match(regex);
+        if (!match || match.length < 2 || !match[1]) {
+            throw new Error("Sidebar menu id for 'Mon Planning' non trouvé");
+        }
+        return match[1];
     }
 
     static parseGrades(body: string): any[] {
