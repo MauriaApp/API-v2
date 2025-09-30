@@ -62,7 +62,6 @@ export class AurionPlanning {
         );
 
         this.viewState = PageParser.parseViewState(getRes.body);
-        this.idInit = PageParser.parseIdInit(getRes.body);
         this.formIdPlanning = PageParser.parseFormIdPlanning(getRes.body);
     }
 

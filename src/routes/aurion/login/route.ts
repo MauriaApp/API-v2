@@ -48,7 +48,6 @@ export async function loginRoute(fastify: FastifyInstance) {
                 return { success: true };
             } catch (error) {
                 Sentry.captureException(error);
-
                 return reply.status(500).send({
                     success: false,
                     error:
