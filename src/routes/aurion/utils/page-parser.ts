@@ -84,7 +84,9 @@ export class PageParser {
             /onclick="[^"]*?PrimeFaces\.addSubmitParam\('form',\{'form:sidebar':'form:sidebar','form:sidebar_menuid':'(\d+)'\}[^"]*?"[^>]*?>[^<]*<span class="ui-menuitem-icon ui-icon fa fa-calendar-alt"><\/span><span class="ui-menuitem-text">Mon Planning<\/span>/;
         const match = body.match(regex);
         if (!match || match.length < 2 || !match[1]) {
-            throw new Error("Sidebar menu id for 'Mon Planning' non trouvé");
+            console.error("Sidebar menu id for 'Mon Planning' non trouvé");
+            console.log(body.substring(20000, 50000)); // Debug output
+            return "0";
         }
         return match[1];
     }
