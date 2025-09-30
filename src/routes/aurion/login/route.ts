@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import { AurionLogin } from "./login";
 import { SessionManager } from "../utils/session-manager";
 import { IdRequest } from "../../../types/aurion";
+import Sentry from "@sentry/node";
 
 export async function loginRoute(fastify: FastifyInstance) {
     fastify.post<{ Body: IdRequest }>(
@@ -46,6 +47,8 @@ export async function loginRoute(fastify: FastifyInstance) {
                 );
                 return { success: true };
             } catch (error) {
+                Sentry.captureException(error);
+
                 return reply.status(500).send({
                     success: false,
                     error:

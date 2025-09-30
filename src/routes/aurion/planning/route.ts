@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import { SessionManager } from "../utils/session-manager";
 import { AurionPlanning } from "./planning";
 import { PlanningRequest } from "../../../types/aurion";
+import Sentry from "@sentry/node";
 
 export async function planningRoute(fastify: FastifyInstance) {
     fastify.post<{ Body: PlanningRequest }>(
@@ -90,6 +91,7 @@ export async function planningRoute(fastify: FastifyInstance) {
                 );
                 return { success: true, data: planning };
             } catch (error) {
+                Sentry.captureException(error);
                 return reply.status(500).send({
                     success: false,
                     error:
