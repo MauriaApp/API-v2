@@ -64,21 +64,13 @@ export class PageParser {
     }
 
     static parseFormIdPlanning(body: string): string {
-        const to = `class="schedule"><div`;
-        const snippet = body.substring(
-            body.indexOf(to) - 300,
-            body.indexOf(to) + 100
-        );
-        const from = "</script> <br /> <br /><div id=";
-        const toDelim = ` class="schedule">`;
-        const idxFrom = snippet.indexOf(from);
-        const idxTo = snippet.indexOf(toDelim);
-        if (idxFrom === -1 || idxTo === -1)
+        const regex = /PrimeFaces\.cw\("Schedule","schedule",\{id:"([^"]+)"/;
+        const match = body.match(regex);
+        if (!match || match.length < 2 || !match[1]) {
             throw new Error("FormIdPlanning non trouvé");
-
-        return snippet
-            .substring(idxFrom + from.length, idxTo)
-            .replace(/"/g, "");
+        }
+        const fullId = match[1];
+        return fullId;
     }
 
     private static extractSpan(cell?: string): string {
