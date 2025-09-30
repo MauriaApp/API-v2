@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import { SessionManager } from "../utils/session-manager";
 import { IdRequest } from "../../../types/aurion";
 import { AurionAbsences } from "./absences";
+import Sentry from "@sentry/node";
 
 export async function absencesRoute(fastify: FastifyInstance) {
     fastify.post<{ Body: IdRequest }>(
@@ -58,6 +59,8 @@ export async function absencesRoute(fastify: FastifyInstance) {
                 );
                 return { success: true, data: absences };
             } catch (error) {
+                Sentry.captureException(error);
+
                 return reply.status(500).send({
                     success: false,
                     error:

@@ -9,11 +9,11 @@ import "./utils/sentry";
 
 import dotenv from "dotenv";
 import fastifyCors from "@fastify/cors";
-const env = process.env.TS_NODE_DEV;
-if (env) {
+const isDev = process.env.TS_NODE_DEV;
+if (isDev) {
     console.log("-- Running in development mode");
 }
-const envFile = env ? ".env.dev" : ".env";
+const envFile = isDev ? ".env.dev" : ".env";
 dotenv.config({ path: envFile, override: true, quiet: true });
 
 const port = process.env.PORT || 8080;
@@ -61,9 +61,12 @@ const start = async () => {
         });
 
         await app.listen({ port: Number(port), host });
-        console.log(`Server listening at http://${host}:${port}`);
-        console.log(`Swagger UI at http://${host}:${port}/docs`);
+        if (isDev) {
+            console.log(`Server listening at http://${host}:${port}`);
+            console.log(`Swagger UI at http://${host}:${port}/docs`);
+        }
     } catch (err) {
+        Sentry.captureException(err);
         app.log.error(err);
         process.exit(1);
     }
