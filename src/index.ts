@@ -62,8 +62,7 @@ const start = async () => {
 
         await app.listen({ port: Number(port), host });
         if (isDev) {
-            console.log(`Server listening at http://${host}:${port}`);
-            console.log(`Swagger UI at http://${host}:${port}/docs`);
+            console.log(`Server listening at + Swagger http://${host}:${port}`);
         }
     } catch (err) {
         Sentry.captureException(err);
