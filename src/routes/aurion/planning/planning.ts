@@ -5,7 +5,7 @@ export class AurionPlanning {
     private sessionManager: SessionManager;
 
     private viewState = "";
-    private menuid = "0";
+    private menuid = "";
     private idInit = "";
     private formIdPlanning = "";
 
@@ -26,6 +26,21 @@ export class AurionPlanning {
     }
 
     async postMainSidebar() {
+        const getSidebarMenuId = await this.sessionManager.client.get(
+            "https://aurion.junia.com/faces/MainMenuPage.xhtml",
+            {
+                headers: {
+                    Referer: "https://aurion.junia.com/",
+                    Connection: "keep-alive",
+                },
+                responseType: "text",
+            }
+        );
+
+        this.menuid = PageParser.parseSidebarMenuIdForMonPlanning(
+            getSidebarMenuId.body
+        );
+
         const postData = new URLSearchParams({
             form: "form",
             "form:largeurDivCenter": "885",
