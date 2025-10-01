@@ -1,5 +1,5 @@
 # Étape 1 : Build
-FROM node:20-slim AS build
+FROM node:24-slim AS build
 
 WORKDIR /app
 
@@ -29,4 +29,4 @@ RUN npm ci --only=production
 EXPOSE 8080
 
 # Entrée du serveur (adapte selon ton fichier d’entrée réel)
-CMD ["node", "src/index.js"]
+CMD ["node", "dist/index.js"]

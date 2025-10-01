@@ -5,8 +5,11 @@
   "main": "index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js"
+    "build": "rimraf dist && tsc",
+    "start": "node dist/index.js",
+    "lint": "eslint . --ext .ts",
+    "dependencies:check": "depcheck",
+    "check": "pnpm run build && pnpm run dependencies:check && pnpm run lint && pnpm audit"
   },
   "keywords": [],
   "author": "",
@@ -25,8 +28,17 @@
   },
   "devDependencies": {
     "@types/node": "^24.3.3",
+    "depcheck": "^1.4.7",
+    "rimraf": "^6.0.1",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "eslint": "^9.21.0",
+    "eslint-config-prettier": "^10.0.2",
+    "eslint-plugin-prettier": "^5.2.3",
+    "prettier": "^3.5.3",
+    "typescript-eslint": "^8.26.0",
+    "@typescript-eslint/parser": "^8.26.0"
+
   }
 }
