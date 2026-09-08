@@ -63,10 +63,9 @@ export const getUpdates = async () => {
         const { data, error } = await supabase.from("changelogs").select("*");
         if (error) throw error;
 
-        // tri des updates par ordre alphabétique
-        data.sort((a, b) => {
-            return a.titre.localeCompare(b.titre);
-        });
+        // tri par version décroissante : la plus récente en premier
+        // (le client utilise data[0] comme dernière update)
+        data.sort((a, b) => Number(b.version) - Number(a.version));
 
         // formatage des données pour les envoyer au client
         return data.map((update) => {
