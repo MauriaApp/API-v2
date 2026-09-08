@@ -3,6 +3,7 @@ import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import aurionRoutes from "./routes/aurion/index";
 import supaDataRoutes from "./routes/supa-data/index";
+import lacathoRoutes from "./routes/lacatho/index";
 
 import Sentry from "@sentry/node";
 import "./utils/sentry";
@@ -50,6 +51,10 @@ const start = async () => {
         // Routes SupaData
         await Promise.all(
             Object.values(supaDataRoutes).map((route) => app.register(route))
+        );
+        // Routes La Catho (menu du jour des RU)
+        await Promise.all(
+            Object.values(lacathoRoutes).map((route) => app.register(route))
         );
 
         await app.register(swaggerUi, {
