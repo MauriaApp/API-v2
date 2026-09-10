@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { SessionManager } from "../utils/session-manager";
+import { getAurionBaseUrl } from "../utils/school";
 import { IdRequest } from "../../../types/aurion";
 import { AurionAbsences } from "./absences";
 import Sentry from "@sentry/node";
@@ -49,10 +50,12 @@ export async function absencesRoute(fastify: FastifyInstance) {
             },
         },
         async (request, reply) => {
-            const sessionManager = new SessionManager();
-            const aurionClient = new AurionAbsences(sessionManager);
-
             try {
+                const sessionManager = new SessionManager(
+                    getAurionBaseUrl(request.body.email)
+                );
+                const aurionClient = new AurionAbsences(sessionManager);
+
                 const absences = await aurionClient.getAllAbsences(
                     request.body.email,
                     request.body.password

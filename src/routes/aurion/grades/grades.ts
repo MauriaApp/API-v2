@@ -16,7 +16,7 @@ export class AurionGrades {
 
     async initializeSession() {
         const res = await this.sessionManager.client.get(
-            "https://aurion.junia.com/",
+            `${this.sessionManager.baseUrl}/`,
             {
                 responseType: "text",
             }
@@ -45,7 +45,7 @@ export class AurionGrades {
         }).toString();
 
         const res = await this.sessionManager.client.post(
-            "https://aurion.junia.com/faces/MainMenuPage.xhtml",
+            `${this.sessionManager.baseUrl}/faces/MainMenuPage.xhtml`,
             {
                 body: postData,
                 headers: {
@@ -70,7 +70,7 @@ export class AurionGrades {
         }).toString();
 
         await this.sessionManager.client.post(
-            "https://aurion.junia.com/faces/MainMenuPage.xhtml",
+            `${this.sessionManager.baseUrl}/faces/MainMenuPage.xhtml`,
             {
                 body: postData,
                 headers: {
@@ -81,11 +81,11 @@ export class AurionGrades {
         );
 
         const getRes = await this.sessionManager.client.get(
-            "https://aurion.junia.com/faces/ChoixIndividu.xhtml",
+            `${this.sessionManager.baseUrl}/faces/ChoixIndividu.xhtml`,
             {
                 headers: {
                     Referer:
-                        "https://aurion.junia.com/faces/ChoixIndividu.xhtml",
+                        `${this.sessionManager.baseUrl}/faces/ChoixIndividu.xhtml`,
                     Connection: "keep-alive",
                 },
                 responseType: "text",
@@ -134,7 +134,7 @@ export class AurionGrades {
         }).toString();
 
         const res = await this.sessionManager.client.post(
-            "https://aurion.junia.com/faces/ChoixIndividu.xhtml",
+            `${this.sessionManager.baseUrl}/faces/ChoixIndividu.xhtml`,
             {
                 body: postData,
                 headers: {

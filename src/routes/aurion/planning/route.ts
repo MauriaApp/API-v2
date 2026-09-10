@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { SessionManager } from "../utils/session-manager";
+import { getAurionBaseUrl } from "../utils/school";
 import { AurionPlanning } from "./planning";
 import { PlanningRequest } from "../../../types/aurion";
 import Sentry from "@sentry/node";
@@ -71,9 +72,6 @@ export async function planningRoute(fastify: FastifyInstance) {
             },
         },
         async (request, reply) => {
-            const sessionManager = new SessionManager();
-            const aurionClient = new AurionPlanning(sessionManager);
-
             const start = request.body.startTimestamp
                 ? request.body.startTimestamp
                 : Date.now() - 7 * 24 * 60 * 60 * 1000; // -1 semaine
@@ -83,6 +81,11 @@ export async function planningRoute(fastify: FastifyInstance) {
                 : start + 60 * 24 * 60 * 60 * 1000; // + 2 months
 
             try {
+                const sessionManager = new SessionManager(
+                    getAurionBaseUrl(request.body.email)
+                );
+                const aurionClient = new AurionPlanning(sessionManager);
+
                 const planning = await aurionClient.getPlanning(
                     request.body.email,
                     request.body.password,

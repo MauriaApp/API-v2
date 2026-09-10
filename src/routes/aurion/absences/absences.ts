@@ -14,7 +14,7 @@ export class AurionAbsences {
 
     async initializeSession() {
         const res = await this.sessionManager.client.get(
-            "https://aurion.junia.com/",
+            `${this.sessionManager.baseUrl}/`,
             { responseType: "text" }
         );
         const body = res.body;
@@ -41,7 +41,7 @@ export class AurionAbsences {
         }).toString();
 
         const res = await this.sessionManager.client.post(
-            "https://aurion.junia.com/faces/MainMenuPage.xhtml",
+            `${this.sessionManager.baseUrl}/faces/MainMenuPage.xhtml`,
             {
                 body: postData,
                 headers: {
@@ -68,7 +68,7 @@ export class AurionAbsences {
         }).toString();
 
         await this.sessionManager.client.post(
-            "https://aurion.junia.com/faces/MainMenuPage.xhtml",
+            `${this.sessionManager.baseUrl}/faces/MainMenuPage.xhtml`,
             {
                 body: postData,
                 headers: {
@@ -79,10 +79,10 @@ export class AurionAbsences {
         );
 
         const absPage = await this.sessionManager.client.get(
-            "https://aurion.junia.com/faces/MesAbsences.xhtml",
+            `${this.sessionManager.baseUrl}/faces/MesAbsences.xhtml`,
             {
                 headers: {
-                    Referer: "https://aurion.junia.com/faces/MesAbsences.xhtml",
+                    Referer: `${this.sessionManager.baseUrl}/faces/MesAbsences.xhtml`,
                     Connection: "keep-alive",
                 },
                 responseType: "text",
@@ -126,7 +126,7 @@ export class AurionAbsences {
         }).toString();
 
         const res = await this.sessionManager.client.post(
-            "https://aurion.junia.com/faces/MesAbsences.xhtml",
+            `${this.sessionManager.baseUrl}/faces/MesAbsences.xhtml`,
             {
                 body: postData,
                 headers: {

@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { AurionLogin } from "./login";
 import { SessionManager } from "../utils/session-manager";
+import { getAurionBaseUrl } from "../utils/school";
 import { IdRequest } from "../../../types/aurion";
 import Sentry from "@sentry/node";
 
@@ -37,10 +38,12 @@ export async function loginRoute(fastify: FastifyInstance) {
             },
         },
         async (request, reply) => {
-            const sessionManager = new SessionManager();
-            const aurionClient = new AurionLogin(sessionManager);
-
             try {
+                const sessionManager = new SessionManager(
+                    getAurionBaseUrl(request.body.email)
+                );
+                const aurionClient = new AurionLogin(sessionManager);
+
                 await aurionClient.login(
                     request.body.email,
                     request.body.password

@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { SessionManager } from "../utils/session-manager";
+import { getAurionBaseUrl } from "../utils/school";
 import { IdRequest } from "../../../types/aurion";
 import { AurionGrades } from "./grades";
 import Sentry from "@sentry/node";
@@ -54,10 +55,12 @@ export async function gradesRoute(fastify: FastifyInstance) {
             },
         },
         async (request, reply) => {
-            const sessionManager = new SessionManager();
-            const aurionClient = new AurionGrades(sessionManager);
-
             try {
+                const sessionManager = new SessionManager(
+                    getAurionBaseUrl(request.body.email)
+                );
+                const aurionClient = new AurionGrades(sessionManager);
+
                 const grades = await aurionClient.getAllGrades(
                     request.body.email,
                     request.body.password

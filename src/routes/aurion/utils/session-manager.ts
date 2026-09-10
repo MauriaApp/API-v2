@@ -2,9 +2,17 @@
 
 import got from "got";
 import { CookieJar } from "tough-cookie";
+import { DEFAULT_AURION_BASE_URL } from "./school";
 
 export class SessionManager {
     private cookieJar = new CookieJar();
+
+    /** Base URL de l'instance Aurion, ex. "https://aurion.junia.com". */
+    public readonly baseUrl: string;
+
+    constructor(baseUrl: string = DEFAULT_AURION_BASE_URL) {
+        this.baseUrl = baseUrl.replace(/\/$/, "");
+    }
 
     public client = got.extend({
         cookieJar: this.cookieJar,
@@ -26,12 +34,9 @@ export class SessionManager {
             j_idt28: "",
         }).toString();
 
-        const response = await this.client.post(
-            "https://aurion.junia.com/login",
-            {
-                body: payload,
-            }
-        );
+        const response = await this.client.post(`${this.baseUrl}/login`, {
+            body: payload,
+        });
 
         if (response.statusCode !== 302) {
             throw new Error(`Login échoué, code HTTP ${response.statusCode}`);
