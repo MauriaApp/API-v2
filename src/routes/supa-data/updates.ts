@@ -1,5 +1,5 @@
 import { FastifyInstance } from "fastify";
-import { supabase } from "./utils/supabase";
+import { getSupabase } from "./utils/supabase";
 
 export async function updatesRoute(fastify: FastifyInstance) {
     fastify.get(
@@ -60,7 +60,7 @@ export async function updatesRoute(fastify: FastifyInstance) {
 // Récupérer les updates depuis Firebase
 export const getUpdates = async () => {
     try {
-        const { data, error } = await supabase.from("changelogs").select("*");
+        const { data, error } = await getSupabase().from("changelogs").select("*");
         if (error) throw error;
 
         // tri par version décroissante : la plus récente en premier

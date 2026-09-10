@@ -1,5 +1,5 @@
 import { FastifyInstance } from "fastify";
-import { supabase } from "./utils/supabase";
+import { getSupabase } from "./utils/supabase";
 
 export async function toolsRoute(fastify: FastifyInstance) {
     fastify.get(
@@ -50,7 +50,7 @@ export async function toolsRoute(fastify: FastifyInstance) {
 // Récupérer les liens depuis Firebase
 export const getTools = async () => {
     try {
-        const { data, error } = await supabase.from("liens").select("*");
+        const { data, error } = await getSupabase().from("liens").select("*");
         if (error) throw error;
 
         const links = data.map((link) => ({
