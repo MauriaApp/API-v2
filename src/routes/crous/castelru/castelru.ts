@@ -35,21 +35,41 @@ const MONTHS = [
 
 let cache: { data: DailyMenu; fetchedAt: number } | null = null;
 
-const stripTags = (s: string) => s.replace(/<[^>]*>/g, "").trim();
+const stripTags = (s: string) => {
+    // Répété jusqu'à stabilité : une seule passe laisserait passer des balises
+    // imbriquées type "<<span>span>".
+    let previous: string;
+    let current = s;
+    do {
+        previous = current;
+        current = current.replace(/<[^>]*>/g, "");
+    } while (current !== previous);
+    return current.trim();
+};
 
+const ENTITIES: Record<string, string> = {
+    "&rsquo;": "’",
+    "&#8217;": "’",
+    "&#39;": "’",
+    "&lsquo;": "‘",
+    "&nbsp;": " ",
+    "&eacute;": "é",
+    "&egrave;": "è",
+    "&agrave;": "à",
+    "&ecirc;": "ê",
+    "&ocirc;": "ô",
+    "&ccedil;": "ç",
+    "&quot;": '"',
+    "&amp;": "&",
+};
+
+// Une seule passe : `&amp;` est traité en même temps que les autres, donc
+// jamais re-décodé (pas de double-unescaping).
 const decodeEntities = (s: string) =>
-    s
-        .replace(/&rsquo;|&#8217;|&#39;/g, "’")
-        .replace(/&lsquo;/g, "‘")
-        .replace(/&nbsp;/g, " ")
-        .replace(/&amp;/g, "&")
-        .replace(/&eacute;/g, "é")
-        .replace(/&egrave;/g, "è")
-        .replace(/&agrave;/g, "à")
-        .replace(/&ecirc;/g, "ê")
-        .replace(/&ocirc;/g, "ô")
-        .replace(/&ccedil;/g, "ç")
-        .replace(/&quot;/g, '"');
+    s.replace(
+        /&(?:rsquo|lsquo|nbsp|eacute|egrave|agrave|ecirc|ocirc|ccedil|quot|amp|#8217|#39);/g,
+        (match) => ENTITIES[match] ?? match
+    );
 
 const clean = (s: string) =>
     decodeEntities(stripTags(s)).replace(/\s+/g, " ").trim();
