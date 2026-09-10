@@ -1,5 +1,5 @@
 import { FastifyInstance } from "fastify";
-import { supabase } from "./utils/supabase";
+import { getSupabase } from "./utils/supabase";
 
 export async function messagesRoute(fastify: FastifyInstance) {
     fastify.get(
@@ -46,7 +46,7 @@ export async function messagesRoute(fastify: FastifyInstance) {
 // Récupérer les messages depuis Firebase
 export const getMessages = async () => {
     try {
-        const { data, error } = await supabase.from("messages").select("*");
+        const { data, error } = await getSupabase().from("messages").select("*");
         if (error) throw error;
 
         const messages = {
