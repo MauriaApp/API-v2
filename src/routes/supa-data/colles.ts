@@ -31,10 +31,17 @@ const splitEmail = (email: string) => {
 const isPrefixOf = (value: string, prefix: string) =>
     prefix.length >= MIN_PREFIX_LENGTH && value.startsWith(prefix);
 
-const matches = (rosterName: string, emailName: string) =>
+// Prefix matching exists to survive truncated surnames in Aurion logins, but
+// it's also what let a HEI student ("Gaspard Boutillier", reported 2026-09-17)
+// get matched to an unrelated CPG classmate: the roster has no idea which
+// filière the caller is actually in. `exact` is true whenever the caller
+// isn't confirmed CPG (see `confirmedCpg` below) and disables prefix matching
+// entirely, so an unconfirmed caller only ever matches a roster row by full
+// name.
+const matches = (rosterName: string, emailName: string, exact: boolean) =>
     rosterName === emailName ||
-    isPrefixOf(rosterName, emailName) ||
-    isPrefixOf(emailName, rosterName);
+    (!exact &&
+        (isPrefixOf(rosterName, emailName) || isPrefixOf(emailName, rosterName)));
 
 // Compound given names ("Mourad Olatodou Kpego Unix") only keep their first
 // word in the email address.
@@ -45,19 +52,36 @@ const givenName = (row: ColleStudentRow) =>
 // src/lib/utils/colles.ts before this moved server-side): given name first,
 // surname prefix to break ties, exact surname to break ties on ties. The
 // roster never leaves this function — only the resulting class/group does.
-function findColleStudent(email: string, rows: ColleStudentRow[]) {
+//
+// `confirmedCpg` comes from the caller: the Webapp only sets it once Aurion
+// grades positively identify the student as CPG1/CPG2 (detectStudentClass).
+// Without that confirmation this function requires an exact full-name match
+// (no prefix, no given-name-only fallback) — loose enough to be useful for
+// the ~50 known CPG students, strict enough that the rest of Junia's several
+// thousand students don't get matched to a stranger's khôlles.
+function findColleStudent(
+    email: string,
+    rows: ColleStudentRow[],
+    confirmedCpg: boolean
+) {
     const { firstName, lastName } = splitEmail(email);
     if (!firstName) return null;
+    if (!confirmedCpg && !lastName) return null;
     // Too short to tell anyone apart (e.g. "louis.s2026@…"): given name only.
-    const useSurname = lastName.length >= MIN_PREFIX_LENGTH;
+    // Only allowed once the caller is confirmed CPG — otherwise a surname is
+    // mandatory.
+    const useSurname = confirmedCpg
+        ? lastName.length >= MIN_PREFIX_LENGTH
+        : true;
+    const exact = !confirmedCpg;
 
     // All classes are searched as one roster: homonyms span them (two Louis,
     // two Thomas, two Théophile…), so stopping at the first class with a
     // single candidate would hand a student someone else's colles.
     const candidates = rows.filter(
         (row) =>
-            matches(givenName(row), firstName) &&
-            (!useSurname || matches(normalize(row.last_name), lastName))
+            matches(givenName(row), firstName, exact) &&
+            (!useSurname || matches(normalize(row.last_name), lastName, exact))
     );
     if (candidates.length === 1 && candidates[0]) return candidates[0];
 
@@ -71,16 +95,22 @@ function findColleStudent(email: string, rows: ColleStudentRow[]) {
 }
 
 export async function collesGroupRoute(fastify: FastifyInstance) {
-    fastify.post<{ Body: { email: string } }>(
+    fastify.post<{ Body: { email: string; confirmedCpg?: boolean } }>(
         "/colles/group",
         {
             schema: {
                 description:
                     "Resolves the caller's khôlles class and group from their Aurion " +
-                    "email, without ever shipping the student roster to the client.",
+                    "email, without ever shipping the student roster to the client. " +
+                    "`confirmedCpg` must only be true when the caller has independently " +
+                    "verified (e.g. from Aurion grade codes) that the student is CPG1/CPG2 " +
+                    "— it relaxes matching from an exact full-name match to prefix matching.",
                 body: {
                     type: "object",
-                    properties: { email: { type: "string" } },
+                    properties: {
+                        email: { type: "string" },
+                        confirmedCpg: { type: "boolean" },
+                    },
                     required: ["email"],
                 },
                 response: {
@@ -117,7 +147,8 @@ export async function collesGroupRoute(fastify: FastifyInstance) {
 
                 const match = findColleStudent(
                     request.body.email,
-                    (data ?? []) as ColleStudentRow[]
+                    (data ?? []) as ColleStudentRow[],
+                    request.body.confirmedCpg === true
                 );
 
                 return {
