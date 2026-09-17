@@ -5,6 +5,7 @@ import aurionRoutes from "./routes/aurion/index";
 import supaDataRoutes from "./routes/supa-data/index";
 import lacathoRoutes from "./routes/lacatho/index";
 import crousRoutes from "./routes/crous/index";
+import devRoutes from "./routes/dev/index";
 
 import Sentry from "@sentry/node";
 import "./utils/sentry";
@@ -61,6 +62,12 @@ const start = async () => {
         await Promise.all(
             Object.values(crousRoutes).map((route) => app.register(route))
         );
+        // Dev-only tooling routes (never registered in production builds)
+        if (isDev) {
+            await Promise.all(
+                Object.values(devRoutes).map((route) => app.register(route))
+            );
+        }
 
         await app.register(swaggerUi, {
             routePrefix: "/",
