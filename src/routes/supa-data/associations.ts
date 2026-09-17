@@ -1,5 +1,5 @@
 import { FastifyInstance } from "fastify";
-import { supabase, pfpUrl } from "./utils/supabase";
+import { getSupabase, pfpUrl } from "./utils/supabase";
 
 export async function associationsRoute(fastify: FastifyInstance) {
     fastify.get(
@@ -50,7 +50,7 @@ export async function associationsRoute(fastify: FastifyInstance) {
 
 const getAssos = async () => {
     try {
-        const { data, error } = await supabase.from("associations").select("*");
+        const { data, error } = await getSupabase().from("associations").select("*");
         if (error) throw error;
 
         data.forEach((item) => {
