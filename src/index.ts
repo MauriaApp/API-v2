@@ -4,6 +4,7 @@ import swaggerUi from "@fastify/swagger-ui";
 import aurionRoutes from "./routes/aurion/index";
 import supaDataRoutes from "./routes/supa-data/index";
 import lacathoRoutes from "./routes/lacatho/index";
+import findmyroomRoutes from "./routes/findmyroom/index";
 import crousRoutes from "./routes/crous/index";
 import devRoutes from "./routes/dev/index";
 
@@ -61,6 +62,12 @@ const start = async () => {
         // Routes Crous (menu du CastelRU, Châteauroux)
         await Promise.all(
             Object.values(crousRoutes).map((route) => app.register(route))
+        );
+        // Routes FindMyRoom (disponibilité des salles Junia)
+        await Promise.all(
+            Object.values(findmyroomRoutes).map((route) =>
+                app.register(route)
+            )
         );
         // Dev-only tooling routes (never registered in production builds)
         if (isDev) {
