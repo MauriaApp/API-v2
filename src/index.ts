@@ -6,6 +6,7 @@ import supaDataRoutes from "./routes/supa-data/index";
 import lacathoRoutes from "./routes/lacatho/index";
 import findmyroomRoutes from "./routes/findmyroom/index";
 import crousRoutes from "./routes/crous/index";
+import printRoutes from "./routes/print/index";
 import devRoutes from "./routes/dev/index";
 
 import Sentry from "@sentry/node";
@@ -68,6 +69,10 @@ const start = async () => {
             Object.values(findmyroomRoutes).map((route) =>
                 app.register(route)
             )
+        );
+        // Routes Print (gestion des impressions Junia, YSoft SafeQ)
+        await Promise.all(
+            Object.values(printRoutes).map((route) => app.register(route))
         );
         // Dev-only tooling routes (never registered in production builds)
         if (isDev) {
