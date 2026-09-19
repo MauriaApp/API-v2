@@ -94,7 +94,8 @@ function parseDataGridDocuments(
     let m: RegExpExecArray | null;
     while ((m = linkRe.exec(html)) !== null) {
         const submitParam = m[1];
-        const label = m[2].trim();
+        const label = m[2]?.trim();
+        if (!submitParam || !label) continue;
         const docIndex = parseInt(submitParam.split(":")[2] ?? "0", 10);
 
         const after = html.slice(m.index, m.index + 4000);
@@ -102,7 +103,7 @@ function parseDataGridDocuments(
             ...after.matchAll(
                 /<td role="gridcell" class="ui-panelgrid-cell">([^<]*)<\/td>/g
             ),
-        ].map((c) => c[1].trim());
+        ].map((c) => c[1]?.trim());
 
         docs.push({
             label,
@@ -135,6 +136,8 @@ function parseSelectDocuments(
     if (!selectMatch) return docs;
 
     const selectName = selectMatch[1];
+    const options = selectMatch[2];
+    if (!selectName || options === undefined) return docs;
     const optionRe = /<option value="(\d+)">([^<]+)<\/option>/g;
     let opt: RegExpExecArray | null;
 
@@ -146,11 +149,13 @@ function parseSelectDocuments(
     );
     if (!dlButtonMatch) return docs;
     const downloadButtonParam = dlButtonMatch[1];
+    if (!downloadButtonParam) return docs;
 
     let idx = 0;
-    while ((opt = optionRe.exec(selectMatch[2])) !== null) {
+    while ((opt = optionRe.exec(options)) !== null) {
         const optionValue = opt[1];
-        const label = opt[2].trim();
+        const label = opt[2]?.trim();
+        if (optionValue === undefined || !label) continue;
         docs.push({
             label,
             type: "",
@@ -183,6 +188,7 @@ function parseConsulterRows(
     let m: RegExpExecArray | null;
     while ((m = buttonRe.exec(html)) !== null) {
         const consulterParam = m[1];
+        if (!consulterParam) continue;
         // Search backwards from the button for the inscription label.
         const before = html.slice(Math.max(0, m.index - 2000), m.index);
         const spans = [
@@ -210,10 +216,11 @@ function parseDetailPageDocument(
     fallbackLabel: string
 ): AurionDocumentEntry | null {
     const docs = parseDataGridDocuments(html, category);
-    if (docs.length > 0) {
+    const first = docs[0];
+    if (first) {
         return {
-            ...docs[0],
-            label: fallbackLabel || docs[0].label,
+            ...first,
+            label: fallbackLabel || first.label,
             downloadType: "consulter",
         };
     }
@@ -222,7 +229,7 @@ function parseDetailPageDocument(
 
 function parseFormAction(html: string): string {
     const match = html.match(/<form[^>]*id="form"[^>]*action="([^"]+)"/);
-    return match
+    return match?.[1]
         ? new URL(match[1], BASE).toString()
         : `${BASE}/faces/ChoixGmcc.xhtml`;
 }
@@ -491,7 +498,7 @@ export class AurionDocuments {
         let m: RegExpExecArray | null;
         while ((m = linkRe.exec(html)) !== null) {
             if (m[1] === submitParam) {
-                filename = m[2].trim();
+                filename = m[2]?.trim() ?? "";
                 break;
             }
         }
