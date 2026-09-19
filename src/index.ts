@@ -7,6 +7,7 @@ import lacathoRoutes from "./routes/lacatho/index";
 import findmyroomRoutes from "./routes/findmyroom/index";
 import crousRoutes from "./routes/crous/index";
 import printRoutes from "./routes/print/index";
+import badjuniaRoutes from "./routes/badjunia/index";
 import devRoutes from "./routes/dev/index";
 
 import Sentry from "@sentry/node";
@@ -73,6 +74,10 @@ const start = async () => {
         // Routes Print (gestion des impressions Junia, YSoft SafeQ)
         await Promise.all(
             Object.values(printRoutes).map((route) => app.register(route))
+        );
+        // Routes BadJunia (statut d'Aurion et du Wi-Fi Junia)
+        await Promise.all(
+            Object.values(badjuniaRoutes).map((route) => app.register(route))
         );
         // Dev-only tooling routes (never registered in production builds)
         if (isDev) {
