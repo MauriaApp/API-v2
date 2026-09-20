@@ -8,12 +8,15 @@ export async function messagesRoute(fastify: FastifyInstance) {
             schema: {
                 response: {
                     200: {
-                        type: "object",
-                        properties: {
-                            title: { type: "string" },
-                            message: { type: "string" },
+                        type: "array",
+                        items: {
+                            type: "object",
+                            properties: {
+                                title: { type: "string" },
+                                message: { type: "string" },
+                            },
+                            required: ["title", "message"],
                         },
-                        required: ["title", "message"],
                     },
                     500: {
                         type: "object",
@@ -43,16 +46,19 @@ export async function messagesRoute(fastify: FastifyInstance) {
     );
 }
 
-// Récupérer les messages depuis Firebase
+// Récupérer les messages importants depuis Supabase, dans l'ordre des id
 export const getMessages = async () => {
     try {
-        const { data, error } = await getSupabase().from("messages").select("*");
+        const { data, error } = await getSupabase()
+            .from("messages")
+            .select("*")
+            .order("id", { ascending: true });
         if (error) throw error;
 
-        const messages = {
-            title: data[0].titre,
-            message: data[0].description,
-        };
+        const messages = (data ?? []).map((entry) => ({
+            title: entry.titre ?? "",
+            message: entry.description ?? "",
+        }));
 
         return messages;
     } catch (error) {
