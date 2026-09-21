@@ -8,6 +8,7 @@ import findmyroomRoutes from "./routes/findmyroom/index";
 import crousRoutes from "./routes/crous/index";
 import printRoutes from "./routes/print/index";
 import badjuniaRoutes from "./routes/badjunia/index";
+import palantirRoutes from "./routes/palantir/index";
 import devRoutes from "./routes/dev/index";
 
 import Sentry from "@sentry/node";
@@ -78,6 +79,10 @@ const start = async () => {
         // Routes BadJunia (statut d'Aurion et du Wi-Fi Junia)
         await Promise.all(
             Object.values(badjuniaRoutes).map((route) => app.register(route))
+        );
+        // Routes Palantir (recherche de plannings salle / enseignant / groupe)
+        await Promise.all(
+            Object.values(palantirRoutes).map((route) => app.register(route))
         );
         // Dev-only tooling routes (never registered in production builds)
         if (isDev) {
