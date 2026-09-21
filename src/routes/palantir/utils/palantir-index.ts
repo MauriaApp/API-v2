@@ -18,10 +18,8 @@ import {
 import { newSession } from "./aurion-menu";
 import {
     HarvestWindow,
-    WORKERS,
     discoverPlannings,
-    harvestPlanning,
-    runPool,
+    harvestAll,
 } from "./harvester";
 
 /** Weeks of lessons pulled in one pass, starting a week in the past. */
@@ -101,29 +99,22 @@ function harvestWindow(now: number): HarvestWindow {
 const timeRange = /^\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}$/;
 
 /**
- * Room and teacher out of an Aurion title.
+ * Room out of an Aurion title.
  *
  * Mirrors parseFromTitle in the Webapp (src/lib/utils/home.ts), deliberately:
  * the fields are fixed but a lesson can carry a free-text note that pushes
  * everything after it down, so they are counted from the time range — the only
  * reliable anchor — and never from the top.
  */
-export function readTitleFields(title: string): {
-    room: string;
-    teacher: string;
-} {
+export function readTitleRoom(title: string): string {
     const lines = title.split("\n").map((l) => l.trim());
     const timeIndex = lines.findIndex((line) => timeRange.test(line));
     const typeIndex = timeIndex === -1 ? lines.length - 2 : timeIndex - 1;
 
     if (typeIndex < 2) {
-        const filled = lines.filter(Boolean);
-        return { room: filled[0] ?? "", teacher: filled[3] ?? "" };
+        return lines.filter(Boolean)[0] ?? "";
     }
-    const teacher = lines
-        .slice(typeIndex + 1)
-        .find((line) => line && !timeRange.test(line));
-    return { room: lines[0] ?? "", teacher: teacher ?? "" };
+    return lines[0] ?? "";
 }
 
 /** Aurion rooms read "IC2 A412 - salle de TP - Campus …"; keep the room itself. */
@@ -152,7 +143,6 @@ interface IndexData {
     window: HarvestWindow;
     lessons: Map<string, PalantirLesson>;
     rooms: Map<string, Bucket>;
-    teachers: Map<string, Bucket>;
     groups: PalantirGroup[];
     nodes: PalantirPlanningNode[];
     failed: string[];
@@ -170,7 +160,7 @@ let progress: {
 /** Why the last build failed, surfaced so a broken harvest is visible. */
 let lastError: string | null = null;
 
-const emptyCounts = { lessons: 0, rooms: 0, teachers: 0, groups: 0 };
+const emptyCounts = { lessons: 0, rooms: 0, groups: 0 };
 
 export function isStale(at: number = Date.now()): boolean {
     return !data || at >= data.expiresAt;
@@ -195,7 +185,6 @@ export function getStatus(): PalantirIndexStatus {
             ? {
                   lessons: data.lessons.size,
                   rooms: data.rooms.size,
-                  teachers: data.teachers.size,
                   groups: data.groups.length,
               }
             : emptyCounts,
@@ -254,51 +243,34 @@ async function build(email: string, password: string): Promise<void> {
 
     const lessons = new Map<string, PalantirLesson>();
     const rooms = new Map<string, Bucket>();
-    const teachers = new Map<string, Bucket>();
     const groups: PalantirGroup[] = [];
     const failed: string[] = [];
 
-    await runPool(
-        email,
-        password,
-        nodes,
-        WORKERS,
-        (session, node) => harvestPlanning(session, node, window),
-        (node, result, error) => {
-            progress = { ...progress, done: progress.done + 1 };
-            if (error || !result) {
-                failed.push(node.label);
-                return;
-            }
-            groups.push(...result.groups);
-            for (const lesson of result.lessons) {
-                // The same lesson can surface under two promotions.
-                if (lessons.has(lesson.id)) continue;
-                lessons.set(lesson.id, lesson);
+    await harvestAll(email, password, nodes, window, (node, result, error) => {
+        progress = { ...progress, done: progress.done + 1 };
+        if (error || !result) {
+            failed.push(node.label);
+            return;
+        }
+        groups.push(...result.groups);
+        for (const lesson of result.lessons) {
+            // The same lesson can surface under two classes.
+            if (lessons.has(lesson.id)) continue;
+            lessons.set(lesson.id, lesson);
 
-                const { room, teacher } = readTitleFields(lesson.title);
-                const shortened = shortRoom(room);
-                if (shortened) {
-                    addToBucket(
-                        rooms,
-                        normalize(shortened),
-                        shortened,
-                        room === shortened ? "" : room,
-                        lesson.id
-                    );
-                }
-                if (teacher) {
-                    addToBucket(
-                        teachers,
-                        normalize(teacher),
-                        teacher,
-                        "",
-                        lesson.id
-                    );
-                }
+            const room = readTitleRoom(lesson.title);
+            const shortened = shortRoom(room);
+            if (shortened) {
+                addToBucket(
+                    rooms,
+                    normalize(shortened),
+                    shortened,
+                    room === shortened ? "" : room,
+                    lesson.id
+                );
             }
         }
-    );
+    });
 
     // A run where every planning failed is a broken session or a changed
     // Aurion, not an empty week: keep the previous index rather than wipe it.
@@ -314,7 +286,6 @@ async function build(email: string, password: string): Promise<void> {
         window,
         lessons,
         rooms,
-        teachers,
         groups,
         nodes,
         failed,
@@ -341,7 +312,7 @@ export function search(
 
     const scored: Array<{ score: number; entity: PalantirEntity }> = [];
 
-    const pushBucket = (map: Map<string, Bucket>, kind: "room" | "teacher") => {
+    const pushBucket = (map: Map<string, Bucket>, kind: "room") => {
         for (const [key, bucket] of map) {
             const score = scoreOf(key, needle);
             if (!score) continue;
@@ -360,7 +331,6 @@ export function search(
     };
 
     if (kinds.includes("room")) pushBucket(data.rooms, "room");
-    if (kinds.includes("teacher")) pushBucket(data.teachers, "teacher");
 
     if (kinds.includes("group")) {
         for (const group of data.groups) {
@@ -377,7 +347,7 @@ export function search(
                     label: group.label || group.code,
                     detail: group.planningLabel,
                     type: group.type,
-                    // A promotion is what most people mean; float it above
+                    // A class is what most people mean; float it above
                     // its own subgroups, which share most of its name.
                     count: group.type === "Promotion" ? 1 : 0,
                 },
@@ -396,16 +366,15 @@ export function search(
         .map((s) => s.entity);
 }
 
-/** Indexed lessons of a room or a teacher, clipped to an optional range. */
+/** Indexed lessons of a room, clipped to an optional range. */
 export function lessonsFor(
-    kind: "room" | "teacher",
+    kind: "room",
     id: string,
     start?: number,
     end?: number
 ): PalantirLesson[] {
     if (!data) return [];
-    const map = kind === "room" ? data.rooms : data.teachers;
-    const bucket = map.get(normalize(id));
+    const bucket = data.rooms.get(normalize(id));
     if (!bucket) return [];
 
     const lessons: PalantirLesson[] = [];

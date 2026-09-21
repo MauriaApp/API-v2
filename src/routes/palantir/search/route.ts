@@ -7,7 +7,7 @@ import {
 import { getStatus, kickBuild, search } from "../utils/palantir-index";
 import { statusSchema } from "../status/route";
 
-const ALL_KINDS: PalantirEntityKind[] = ["room", "teacher", "group"];
+const ALL_KINDS: PalantirEntityKind[] = ["room", "group"];
 
 export async function palantirSearchRoute(fastify: FastifyInstance) {
     fastify.post<{ Body: PalantirSearchRequest }>(
@@ -15,7 +15,7 @@ export async function palantirSearchRoute(fastify: FastifyInstance) {
         {
             schema: {
                 description:
-                    "Recherche une salle, un enseignant ou un groupe/promotion dans l'index Palantir. Si l'index est périmé, l'ancien est servi pendant que le nouveau se construit ; s'il est vide, la réponse arrive avec une liste vide et un état \"building\" à sonder via /palantir/status.",
+                    "Recherche une salle ou un groupe/classe dans l'index Palantir. Si l'index est périmé, l'ancien est servi pendant que le nouveau se construit ; s'il est vide, la réponse arrive avec une liste vide et un état \"building\" à sonder via /palantir/status.",
                 body: {
                     type: "object",
                     properties: {

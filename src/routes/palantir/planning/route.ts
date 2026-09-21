@@ -18,7 +18,7 @@ export async function palantirPlanningRoute(fastify: FastifyInstance) {
         {
             schema: {
                 description:
-                    "Emploi du temps d'une entité renvoyée par /palantir/search. Les salles et les enseignants sont servis depuis l'index ; un groupe est récupéré en direct sur Aurion, car la moisson coche toutes les promotions à la fois et ne dit pas à quel groupe appartient un cours. ATTENTION: Les timestamps sont en MILLISECONDES !",
+                    "Emploi du temps d'une entité renvoyée par /palantir/search. Les salles sont servies depuis l'index ; un groupe est récupéré en direct sur Aurion, car la moisson coche toutes les classes à la fois et ne dit pas à quel groupe appartient un cours. ATTENTION: Les timestamps sont en MILLISECONDES !",
                 body: {
                     type: "object",
                     properties: {
@@ -26,7 +26,7 @@ export async function palantirPlanningRoute(fastify: FastifyInstance) {
                         password: { type: "string" },
                         kind: {
                             type: "string",
-                            enum: ["room", "teacher", "group"],
+                            enum: ["room", "group"],
                         },
                         id: {
                             type: "string",
@@ -101,7 +101,7 @@ export async function palantirPlanningRoute(fastify: FastifyInstance) {
                 request.body;
 
             try {
-                if (kind === "room" || kind === "teacher") {
+                if (kind === "room") {
                     kickBuild(email, password, (error) =>
                         Sentry.captureException(error)
                     );

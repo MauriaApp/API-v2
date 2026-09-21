@@ -28,10 +28,9 @@ export const statusSchema = {
             properties: {
                 lessons: { type: "number" },
                 rooms: { type: "number" },
-                teachers: { type: "number" },
                 groups: { type: "number" },
             },
-            required: ["lessons", "rooms", "teachers", "groups"],
+            required: ["lessons", "rooms", "groups"],
         },
     },
     required: [

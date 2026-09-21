@@ -1,5 +1,5 @@
 /** What a Palantir search result points at. */
-export type PalantirEntityKind = "room" | "teacher" | "group";
+export type PalantirEntityKind = "room" | "group";
 
 export interface PalantirEntity {
     kind: PalantirEntityKind;
@@ -11,7 +11,7 @@ export interface PalantirEntity {
     detail: string;
     /**
      * Aurion's own kind for a group — "Promotion" for a class, "Planning" for
-     * one of its subgroups. Empty for rooms and teachers.
+     * one of its subgroups. Empty for rooms.
      */
     type: string;
     /**
@@ -88,7 +88,6 @@ export interface PalantirIndexStatus {
     counts: {
         lessons: number;
         rooms: number;
-        teachers: number;
         groups: number;
     };
 }

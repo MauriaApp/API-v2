@@ -87,11 +87,32 @@ export async function discoverPlannings(
     return nodes;
 }
 
-/** Re-open a planning's selection screen from a fresh, correctly expanded menu. */
-async function openChoice(
+/**
+ * A worker's cached menu page: which filière it can open leaves of, with the
+ * ViewState those leaf posts reuse. Verified live (scripts/palantir-menu-reuse.ts):
+ * a leaf post neither consumes the ViewState nor disturbs the server-side
+ * expansion, so the openMenu+expand preamble is paid once per worker and
+ * filière instead of once per planning.
+ */
+export interface MenuContext {
+    menu: MenuPage;
+    viewState: string;
+    filiereId: string;
+}
+
+/** The selection screen is the DataTable with its "Voir planning" button. */
+const isChoiceScreen = (body: string) =>
+    body.includes('PrimeFaces.cw("DataTable"') &&
+    body.includes("Voir planning") &&
+    !body.includes("<error-name>");
+
+/** The menu preamble — 5 requests — or the cached one when it still matches. */
+async function ensureMenu(
     session: Session,
+    ctx: MenuContext | null,
     node: PalantirPlanningNode
-): Promise<{ menu: MenuPage; url: string; body: string }> {
+): Promise<MenuContext> {
+    if (ctx && ctx.filiereId === node.filiereId) return ctx;
     const menu = await openMenu(session);
     const opened = await expand(
         session,
@@ -99,8 +120,34 @@ async function openChoice(
         [...ROOT_CHAIN, node.filiereId],
         DELAY_MS
     );
-    const leaf = await openLeaf(session, menu, opened.viewState, node.menuid);
-    return { menu, url: leaf.url, body: leaf.body };
+    return { menu, viewState: opened.viewState, filiereId: node.filiereId };
+}
+
+/**
+ * Open a planning's selection screen through a cached menu context. If the
+ * reused page turns out not to work after all (session recycled, Aurion
+ * restarted…), pay the preamble again and retry once before giving up.
+ */
+async function openChoice(
+    session: Session,
+    ctx: MenuContext,
+    node: PalantirPlanningNode
+): Promise<{ url: string; body: string; ctx: MenuContext }> {
+    const leaf = await openLeaf(session, ctx.menu, ctx.viewState, node.menuid);
+    if (isChoiceScreen(leaf.body)) {
+        return { url: leaf.url, body: leaf.body, ctx };
+    }
+    const fresh = await ensureMenu(session, null, node);
+    const retry = await openLeaf(
+        session,
+        fresh.menu,
+        fresh.viewState,
+        node.menuid
+    );
+    if (!isChoiceScreen(retry.body)) {
+        throw new Error("écran de sélection introuvable");
+    }
+    return { url: retry.url, body: retry.body, ctx: fresh };
 }
 
 const stripTags = (html: string) =>
@@ -264,14 +311,20 @@ function parseChoiceIds(body: string) {
 
 /**
  * One planning, every group ticked at once: the groups feed the searchable
- * catalogue, the lessons feed the room and teacher index.
+ * catalogue, the lessons feed the room index. Returns the possibly-refreshed
+ * menu context, for the caller to keep chaining leaves with.
  */
 export async function harvestPlanning(
     session: Session,
+    ctx: MenuContext,
     node: PalantirPlanningNode,
     window: HarvestWindow
-): Promise<{ groups: PalantirGroup[]; lessons: PalantirLesson[] }> {
-    const choice = await openChoice(session, node);
+): Promise<{
+    groups: PalantirGroup[];
+    lessons: PalantirLesson[];
+    ctx: MenuContext;
+}> {
+    const choice = await openChoice(session, ctx, node);
     const { tableId, submitId } = parseChoiceIds(choice.body);
     const groups = await readAllGroups(
         session,
@@ -280,7 +333,7 @@ export async function harvestPlanning(
         tableId,
         node
     );
-    if (!groups.length) return { groups: [], lessons: [] };
+    if (!groups.length) return { groups: [], lessons: [], ctx: choice.ctx };
 
     const lessons = await readLessons(
         session,
@@ -291,7 +344,7 @@ export async function harvestPlanning(
         groups.map((g) => g.rowKey),
         window
     );
-    return { groups, lessons };
+    return { groups, lessons, ctx: choice.ctx };
 }
 
 /**
@@ -305,7 +358,8 @@ export async function fetchGroupLessons(
     rowKey: string,
     window: HarvestWindow
 ): Promise<PalantirLesson[]> {
-    const choice = await openChoice(session, node);
+    const ctx = await ensureMenu(session, null, node);
+    const choice = await openChoice(session, ctx, node);
     const { tableId, submitId } = parseChoiceIds(choice.body);
     return readLessons(
         session,
@@ -319,36 +373,70 @@ export async function fetchGroupLessons(
 }
 
 /**
- * Run `task` over `items` on `workers` independent Aurion sessions. Aurion
+ * Harvest every planning on `workers` independent Aurion sessions. Aurion
  * accepts several concurrent sessions for the same account, and a worker that
- * fails on one item keeps going with the next.
+ * fails on one planning keeps going with the next.
+ *
+ * Plannings are handed out as contiguous filière buckets, not one by one: the
+ * menu context a worker caches is only good for one filière, so a worker that
+ * jumped between filières on every item would pay the preamble again
+ * each time and the reuse would be worth nothing. A failed planning drops the
+ * context — the next one rebuilds it from a fresh menu.
  */
-export async function runPool<T, R>(
+export async function harvestAll(
     email: string,
     password: string,
-    items: T[],
-    workers: number,
-    task: (session: Session, item: T) => Promise<R>,
-    onSettled?: (item: T, result: R | null, error: unknown) => void
+    nodes: PalantirPlanningNode[],
+    window: HarvestWindow,
+    onPlanning: (
+        node: PalantirPlanningNode,
+        result: { groups: PalantirGroup[]; lessons: PalantirLesson[] } | null,
+        error: unknown
+    ) => void
 ): Promise<void> {
-    let cursor = 0;
-    const next = () => (cursor < items.length ? items[cursor++] : undefined);
+    const buckets: PalantirPlanningNode[][] = [];
+    for (const node of nodes) {
+        const current = buckets[buckets.length - 1];
+        if (current?.[0]?.filiereId === node.filiereId) {
+            current.push(node);
+        } else {
+            buckets.push([node]);
+        }
+    }
 
+    let cursor = 0;
     const run = async () => {
         const session = newSession();
         await session.login(email, password);
-        for (let item = next(); item !== undefined; item = next()) {
-            try {
-                const result = await task(session, item);
-                onSettled?.(item, result, null);
-            } catch (error) {
-                onSettled?.(item, null, error);
+        let ctx: MenuContext | null = null;
+        for (
+            let index = cursor++;
+            index < buckets.length;
+            index = cursor++
+        ) {
+            const bucket = buckets[index];
+            if (!bucket) continue;
+            for (const node of bucket) {
+                try {
+                    const menu = await ensureMenu(session, ctx, node);
+                    const result = await harvestPlanning(
+                        session,
+                        menu,
+                        node,
+                        window
+                    );
+                    ctx = result.ctx;
+                    onPlanning(node, result, null);
+                } catch (error) {
+                    ctx = null;
+                    onPlanning(node, null, error);
+                }
+                await sleep(DELAY_MS);
             }
-            await sleep(DELAY_MS);
         }
     };
 
     await Promise.all(
-        Array.from({ length: Math.min(workers, items.length) }, () => run())
+        Array.from({ length: Math.min(WORKERS, buckets.length) }, () => run())
     );
 }
