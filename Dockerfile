@@ -21,12 +21,12 @@ FROM node:20-slim
 WORKDIR /
 
 # Copier uniquement le build/dist et fichiers nécessaires, pas tout le projet
-COPY --from=build /app .
-COPY --from=build /app/package*.json .
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/package*.json ./
 # Installer uniquement les dépendances de prod
 RUN npm ci --only=production
 
 EXPOSE 8080
 
 # Entrée du serveur (adapte selon ton fichier d’entrée réel)
-CMD ["node", "src/index.js"]
+CMD ["node", "dist/index.js"]
