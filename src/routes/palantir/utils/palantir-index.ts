@@ -236,7 +236,9 @@ async function build(email: string, password: string): Promise<void> {
 
     progress = { phase: "plannings", done: 0, total: 0, startedAt: now };
     const scout = newSession();
-    await scout.login(email, password);
+    // The scout walks stateful menus on its own session, like every Palantir
+    // session — never the shared cached one.
+    await scout.login(email, password, { noCache: true });
     const nodes = await discoverPlannings(scout);
 
     progress = { ...progress, phase: "events", done: 0, total: nodes.length };

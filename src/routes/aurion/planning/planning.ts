@@ -14,15 +14,9 @@ export class AurionPlanning {
     }
 
     async initializeSession() {
-        const res = await this.sessionManager.client.get(
-            "https://aurion.junia.com/",
-            {
-                responseType: "text",
-            }
-        );
-        const body = res.body;
-        this.viewState = PageParser.parseViewState(body);
-        this.idInit = PageParser.parseIdInit(body);
+        const homeState = await this.sessionManager.fetchHomePageState();
+        this.viewState = homeState.viewState;
+        this.idInit = homeState.idInit;
     }
 
     async postMainSidebar() {
@@ -134,20 +128,20 @@ export class AurionPlanning {
         start: number,
         end: number
     ) {
-        await this.sessionManager.login(email, password);
-        await this.initializeSession();
-        await this.postMainSidebar();
-        const now = new Date(start);
-        const today = now.toLocaleDateString("fr-FR", {
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric",
-        });
-        const week = String(getWeekNumber(now)).padStart(2, "0");
-        const year = String(now.getFullYear());
+        return this.sessionManager.run(email, password, async () => {
+            await this.initializeSession();
+            await this.postMainSidebar();
+            const now = new Date(start);
+            const today = now.toLocaleDateString("fr-FR", {
+                day: "2-digit",
+                month: "2-digit",
+                year: "numeric",
+            });
+            const week = String(getWeekNumber(now)).padStart(2, "0");
+            const year = String(now.getFullYear());
 
-        const planningData = await this.postPlan(start, end, today, week, year);
-        return planningData;
+            return this.postPlan(start, end, today, week, year);
+        });
     }
 }
 
