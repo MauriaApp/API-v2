@@ -8,6 +8,23 @@ export interface JuniaStatus {
   aurionSince: string | null;
   wifiDown: boolean;
   wifiSince: string | null;
+  /** Response time (ms) of each Aurion page, as last measured by BadJunia. */
+  aurionTimes: AurionTimes;
+}
+
+/**
+ * BadJunia's per-page Aurion timings: login, home, then each feature page.
+ * A cold fetch through this API pays login + home + one feature page, so the
+ * Webapp uses these to calibrate its fetch progress indicator. `null` when
+ * the page is unknown to the upstream.
+ */
+export interface AurionTimes {
+  login: number | null;
+  home: number | null;
+  grades: number | null;
+  planning: number | null;
+  absences: number | null;
+  documents: number | null;
 }
 
 interface UpstreamIncident {
@@ -17,7 +34,7 @@ interface UpstreamIncident {
 
 interface UpstreamService {
   id: string;
-  lastCheck?: { up?: boolean } | null;
+  lastCheck?: { up?: boolean; responseTime?: number } | null;
   dailySummaries?: { incidents?: UpstreamIncident[] }[];
 }
 
@@ -26,6 +43,14 @@ const ALL_FINE: JuniaStatus = {
   aurionSince: null,
   wifiDown: false,
   wifiSince: null,
+  aurionTimes: {
+    login: null,
+    home: null,
+    grades: null,
+    planning: null,
+    absences: null,
+    documents: null,
+  },
 };
 
 let cache: { data: JuniaStatus; fetchedAt: number } | null = null;
@@ -33,6 +58,19 @@ let cache: { data: JuniaStatus; fetchedAt: number } | null = null;
 /** A service only counts as down when its last check explicitly failed. */
 function isDown(services: UpstreamService[], id: string): boolean {
   return services.find((s) => s.id === id)?.lastCheck?.up === false;
+}
+
+/**
+ * BadJunia checks each Aurion page separately (aurionLogin, aurionHome,
+ * aurionGrades, …). Aurion counts as down as soon as one of them fails its
+ * last check.
+ */
+function isAurionDown(services: UpstreamService[]): boolean {
+  return (
+    services.find(
+      (s) => s.id.startsWith("aurion") && s.lastCheck?.up === false
+    ) !== undefined
+  );
 }
 
 /** Start of the ongoing incident (dailySummaries are newest first). */
@@ -45,6 +83,39 @@ function downSince(services: UpstreamService[], id: string): string | null {
   return null;
 }
 
+/**
+ * Earliest ongoing incident across the down Aurion pages: when several pages
+ * are down, the warning dates back to the first one that fell.
+ */
+function aurionDownSince(services: UpstreamService[]): string | null {
+  let earliest: string | null = null;
+  for (const service of services) {
+    if (!service.id.startsWith("aurion")) continue;
+    if (service.lastCheck?.up !== false) continue;
+    const since = downSince(services, service.id);
+    if (since && (!earliest || since < earliest)) {
+      earliest = since;
+    }
+  }
+  return earliest;
+}
+
+/** Last measured response time (ms) of an upstream service, null if unknown. */
+function responseTime(services: UpstreamService[], id: string): number | null {
+  return services.find((s) => s.id === id)?.lastCheck?.responseTime ?? null;
+}
+
+function aurionResponseTimes(services: UpstreamService[]): AurionTimes {
+  return {
+    login: responseTime(services, "aurionLogin"),
+    home: responseTime(services, "aurionHome"),
+    grades: responseTime(services, "aurionGrades"),
+    planning: responseTime(services, "aurionPlanning"),
+    absences: responseTime(services, "aurionAbsences"),
+    documents: responseTime(services, "aurionDocuments"),
+  };
+}
+
 async function fetchStatus(): Promise<JuniaStatus> {
   const res = await fetch(STATUS_URL, {
     cache: "no-store",
@@ -54,13 +125,14 @@ async function fetchStatus(): Promise<JuniaStatus> {
 
   const body = (await res.json()) as { services?: UpstreamService[] };
   const services = body.services ?? [];
-  const aurionDown = isDown(services, "aurion");
+  const aurionDown = isAurionDown(services);
   const wifiDown = isDown(services, "juniaNetwork");
   return {
     aurionDown,
-    aurionSince: aurionDown ? downSince(services, "aurion") : null,
+    aurionSince: aurionDown ? aurionDownSince(services) : null,
     wifiDown,
     wifiSince: wifiDown ? downSince(services, "juniaNetwork") : null,
+    aurionTimes: aurionResponseTimes(services),
   };
 }
 

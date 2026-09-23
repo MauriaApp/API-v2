@@ -259,11 +259,9 @@ export class AurionDocuments {
     }
 
     private async initializeSession() {
-        const res = await this.sessionManager.client.get(`${BASE}/`, {
-            responseType: "text",
-        });
-        this.idInit = PageParser.parseIdInit(res.body);
-        this.viewState = PageParser.parseViewState(res.body);
+        const homeState = await this.sessionManager.fetchHomePageState();
+        this.idInit = homeState.idInit;
+        this.viewState = homeState.viewState;
     }
 
     /** Open the "Mes Documents" submenu, return the partial AJAX body. */
@@ -356,67 +354,75 @@ export class AurionDocuments {
         email: string,
         password: string
     ): Promise<DocumentsResult> {
-        await this.sessionManager.login(email, password);
-        await this.initializeSession();
+        return this.sessionManager.run(email, password, async () => {
+            await this.initializeSession();
 
-        // Discover the leaves.
-        const submenuBody = await this.openDocsSubmenu();
-        const entries = parseSidebarEntries(submenuBody);
-        const leaves: DocumentCategory[] = entries
-            .filter(
-                (e) => e.kind === "item" && !NON_LEAF_IDS.has(e.id)
-            )
-            .map((e) => ({ menuid: e.id, label: e.label }));
+            // Discover the leaves.
+            const submenuBody = await this.openDocsSubmenu();
+            const entries = parseSidebarEntries(submenuBody);
+            const leaves: DocumentCategory[] = entries
+                .filter(
+                    (e) => e.kind === "item" && !NON_LEAF_IDS.has(e.id)
+                )
+                .map((e) => ({ menuid: e.id, label: e.label }));
 
-        const categories: DocumentCategory[] = [];
-        const documents: AurionDocumentEntry[] = [];
-
-        for (const leaf of leaves) {
-            const html = await this.openLeaf(leaf.menuid);
-
-            // Type A: DataGrid with troncature-download-doc
-            const gridDocs = parseDataGridDocuments(html, leaf.menuid);
-            if (gridDocs.length > 0) {
-                categories.push(leaf);
-                documents.push(...gridDocs);
-                continue;
+            // An empty submenu means it did not open — most likely a stale
+            // session. Throw so `run` retries with a fresh login instead of
+            // silently returning an empty document list.
+            if (leaves.length === 0) {
+                throw new Error("Aucune catégorie de documents trouvée");
             }
 
-            // Type B: SelectOneMenu with documents_input
-            const selectDocs = parseSelectDocuments(html, leaf.menuid);
-            if (selectDocs.length > 0) {
-                categories.push(leaf);
-                documents.push(...selectDocs);
-                continue;
-            }
+            const categories: DocumentCategory[] = [];
+            const documents: AurionDocumentEntry[] = [];
 
-            // Type C: DataTable with "Consulter" buttons
-            const consulterRows = parseConsulterRows(html);
-            if (consulterRows.length > 0) {
-                categories.push(leaf);
-                for (const row of consulterRows) {
-                    // Click "Consulter" to reach the detail page.
-                    const detailHtml = await this.openConsulterDetail(
-                        html,
-                        row.consulterParam
-                    );
-                    const doc = parseDetailPageDocument(
-                        detailHtml,
-                        leaf.menuid,
-                        row.rowLabel
-                    );
-                    if (doc) {
-                        doc.consulterParam = row.consulterParam;
-                        documents.push(doc);
-                    }
+            for (const leaf of leaves) {
+                const html = await this.openLeaf(leaf.menuid);
+
+                // Type A: DataGrid with troncature-download-doc
+                const gridDocs = parseDataGridDocuments(html, leaf.menuid);
+                if (gridDocs.length > 0) {
+                    categories.push(leaf);
+                    documents.push(...gridDocs);
+                    continue;
                 }
-                continue;
+
+                // Type B: SelectOneMenu with documents_input
+                const selectDocs = parseSelectDocuments(html, leaf.menuid);
+                if (selectDocs.length > 0) {
+                    categories.push(leaf);
+                    documents.push(...selectDocs);
+                    continue;
+                }
+
+                // Type C: DataTable with "Consulter" buttons
+                const consulterRows = parseConsulterRows(html);
+                if (consulterRows.length > 0) {
+                    categories.push(leaf);
+                    for (const row of consulterRows) {
+                        // Click "Consulter" to reach the detail page.
+                        const detailHtml = await this.openConsulterDetail(
+                            html,
+                            row.consulterParam
+                        );
+                        const doc = parseDetailPageDocument(
+                            detailHtml,
+                            leaf.menuid,
+                            row.rowLabel
+                        );
+                        if (doc) {
+                            doc.consulterParam = row.consulterParam;
+                            documents.push(doc);
+                        }
+                    }
+                    continue;
+                }
+
+                // No downloadable documents on this leaf — skip it.
             }
 
-            // No downloadable documents on this leaf — skip it.
-        }
-
-        return { categories, documents };
+            return { categories, documents };
+        });
     }
 
     /**
@@ -462,26 +468,31 @@ export class AurionDocuments {
         downloadButtonParam?: string,
         consulterParam?: string
     ): Promise<{ buffer: Buffer; filename: string }> {
-        await this.sessionManager.login(email, password);
-        await this.initializeSession();
+        return this.sessionManager.run(email, password, async () => {
+            await this.initializeSession();
 
-        const html = await this.openLeaf(category);
+            const html = await this.openLeaf(category);
 
-        if (downloadType === "datagrid") {
-            return this.downloadDataGrid(html, submitParam);
-        }
+            if (downloadType === "datagrid") {
+                return this.downloadDataGrid(html, submitParam);
+            }
 
-        if (downloadType === "select") {
-            return this.downloadSelect(
+            if (downloadType === "select") {
+                return this.downloadSelect(
+                    html,
+                    selectName ?? "",
+                    optionValue ?? "",
+                    downloadButtonParam ?? ""
+                );
+            }
+
+            // consulter
+            return this.downloadConsulter(
                 html,
-                selectName ?? "",
-                optionValue ?? "",
-                downloadButtonParam ?? ""
+                consulterParam ?? "",
+                submitParam
             );
-        }
-
-        // consulter
-        return this.downloadConsulter(html, consulterParam ?? "", submitParam);
+        });
     }
 
     private async downloadDataGrid(

@@ -15,16 +15,10 @@ export class AurionGrades {
     }
 
     async initializeSession() {
-        const res = await this.sessionManager.client.get(
-            "https://aurion.junia.com/",
-            {
-                responseType: "text",
-            }
-        );
-        const body = res.body;
-        this.viewState = PageParser.parseViewState(body);
-        this.formId = PageParser.parseFormId(body);
-        this.idInit = PageParser.parseIdInit(body);
+        const homeState = await this.sessionManager.fetchHomePageState();
+        this.viewState = homeState.viewState;
+        this.formId = homeState.formId;
+        this.idInit = homeState.idInit;
     }
 
     async postMainMenu() {
@@ -148,10 +142,11 @@ export class AurionGrades {
     }
 
     async getAllGrades(email: string, password: string): Promise<any[]> {
-        await this.sessionManager.login(email, password);
-        await this.initializeSession();
-        await this.postMainMenu();
-        await this.postMainSidebar();
-        return this.postGrade();
+        return this.sessionManager.run(email, password, async () => {
+            await this.initializeSession();
+            await this.postMainMenu();
+            await this.postMainSidebar();
+            return this.postGrade();
+        });
     }
 }
