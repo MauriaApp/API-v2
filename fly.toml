@@ -4,7 +4,7 @@
 #
 
 app = 'mauria-api'
-primary_region = 'cdg'
+primary_region = 'ams'
 
 [build]
 
@@ -17,6 +17,6 @@ primary_region = 'cdg'
   processes = ['app']
 
 [[vm]]
-  memory = '256mb'
+  memory = '512mb'
   cpu_kind = 'shared'
-  cpus = 1
+  cpus = 2
