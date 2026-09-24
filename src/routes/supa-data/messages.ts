@@ -46,13 +46,14 @@ export async function messagesRoute(fastify: FastifyInstance) {
     );
 }
 
-// Récupérer les messages importants depuis Supabase, dans l'ordre des id
+// Récupérer les messages importants depuis Supabase, du plus récent (id le
+// plus grand, affiché en premier) au plus ancien
 export const getMessages = async () => {
     try {
         const { data, error } = await getSupabase()
             .from("messages")
             .select("*")
-            .order("id", { ascending: true });
+            .order("id", { ascending: false });
         if (error) throw error;
 
         const messages = (data ?? []).map((entry) => ({

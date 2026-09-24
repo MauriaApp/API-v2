@@ -127,7 +127,9 @@ export async function palantirPlanningRoute(fastify: FastifyInstance) {
 
                 const window = currentWindow();
                 const session = new SessionManager();
-                await session.login(email, password);
+                // Palantir walks stateful menus: it needs its own Aurion
+                // session, not the shared cached one.
+                await session.login(email, password, { noCache: true });
                 const lessons = await fetchGroupLessons(
                     session,
                     resolved.node,

@@ -162,6 +162,13 @@ let lastError: string | null = null;
 
 const emptyCounts = { lessons: 0, rooms: 0, groups: 0 };
 
+/**
+ * Kill switch: while this is false, every query answers empty and no harvest
+ * is ever started (Junia's firewall bans the API's egress IP over harvest
+ * traffic). Flip back to true to re-enable Palantir.
+ */
+export const PALANTIR_ENABLED = false;
+
 export function isStale(at: number = Date.now()): boolean {
     return !data || at >= data.expiresAt;
 }
@@ -236,7 +243,9 @@ async function build(email: string, password: string): Promise<void> {
 
     progress = { phase: "plannings", done: 0, total: 0, startedAt: now };
     const scout = newSession();
-    await scout.login(email, password);
+    // The scout walks stateful menus on its own session, like every Palantir
+    // session — never the shared cached one.
+    await scout.login(email, password, { noCache: true });
     const nodes = await discoverPlannings(scout);
 
     progress = { ...progress, phase: "events", done: 0, total: nodes.length };
@@ -306,7 +315,7 @@ export function search(
     kinds: PalantirEntityKind[],
     limit: number
 ): PalantirEntity[] {
-    if (!data) return [];
+    if (!PALANTIR_ENABLED || !data) return [];
     const needle = normalize(query);
     if (!needle) return [];
 
@@ -373,7 +382,7 @@ export function lessonsFor(
     start?: number,
     end?: number
 ): PalantirLesson[] {
-    if (!data) return [];
+    if (!PALANTIR_ENABLED || !data) return [];
     const bucket = data.rooms.get(normalize(id));
     if (!bucket) return [];
 
@@ -397,7 +406,7 @@ export function lessonsFor(
 export function resolveGroup(
     id: string
 ): { node: PalantirPlanningNode; group: PalantirGroup } | null {
-    if (!data) return null;
+    if (!PALANTIR_ENABLED || !data) return null;
     const separator = id.indexOf(":");
     if (separator === -1) return null;
     const menuid = id.slice(0, separator);
@@ -423,6 +432,7 @@ export function kickBuild(
     password: string,
     onError: (error: unknown) => void
 ): void {
+    if (!PALANTIR_ENABLED) return;
     if (building || !isStale()) return;
     void ensureIndex(email, password).catch(onError);
 }

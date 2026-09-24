@@ -407,7 +407,9 @@ export async function harvestAll(
     let cursor = 0;
     const run = async () => {
         const session = newSession();
-        await session.login(email, password);
+        // Each worker needs an independent, strictly sequential session —
+        // never the shared cached one.
+        await session.login(email, password, { noCache: true });
         let ctx: MenuContext | null = null;
         for (
             let index = cursor++;

@@ -55,6 +55,7 @@ const getAssos = async () => {
 
         data.forEach((item) => {
             if (
+                !item.image &&
                 item.lienContact &&
                 item.lienContact.includes("instagram.com/")
             ) {
