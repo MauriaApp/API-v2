@@ -24,7 +24,7 @@ WORKDIR /
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/package*.json ./
 # Installer uniquement les dépendances de prod
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 EXPOSE 8080
 
