@@ -11,17 +11,11 @@ import badjuniaRoutes from "./routes/badjunia/index";
 import palantirRoutes from "./routes/palantir/index";
 import devRoutes from "./routes/dev/index";
 
+import { isDev } from "./utils/env";
 import Sentry from "@sentry/node";
 import "./utils/sentry";
 
-import dotenv from "dotenv";
 import fastifyCors from "@fastify/cors";
-const isDev = process.env.TS_NODE_DEV;
-if (isDev) {
-    console.log("-- Running in development mode");
-}
-const envFile = isDev ? ".env.dev" : ".env";
-dotenv.config({ path: envFile, override: true, quiet: true });
 
 const port = process.env.PORT || 8080;
 const host = process.env.HOST || "0.0.0.0";
