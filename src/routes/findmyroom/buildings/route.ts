@@ -21,6 +21,12 @@ export async function buildingsRoute(fastify: FastifyInstance) {
                                 dispo: { type: "number" },
                                 total: { type: "number" },
                                 pourcentage: { type: "number" },
+                                fermees: {
+                                    type: "number",
+                                    description:
+                                        "Salles signalées libres par findmyroom " +
+                                        "après leur heure de fermeture (déduites de dispo).",
+                                },
                             },
                             required: [
                                 "code",
