@@ -9,9 +9,15 @@ export interface Building {
     total: number;
     /** dispo / total as a whole-number percentage, pre-computed by the source. */
     pourcentage: number;
+    /** Rooms past their closing time (not findmyroom's, see markClosedRooms). */
+    fermees: number;
 }
 
-export type RoomStatus = "DISPONIBLE" | "OCCUPEE";
+/**
+ * "FERMEE" isn't findmyroom's: it's set here for rooms still reported free
+ * past their closing time (see markClosedRooms).
+ */
+export type RoomStatus = "DISPONIBLE" | "OCCUPEE" | "FERMEE";
 
 export interface Room {
     salle: string;
