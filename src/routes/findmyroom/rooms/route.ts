@@ -33,7 +33,13 @@ export async function roomsRoute(fastify: FastifyInstance) {
                                     type: "object",
                                     properties: {
                                         salle: { type: "string" },
-                                        statut: { type: "string" },
+                                        statut: {
+                                            type: "string",
+                                            description:
+                                                "DISPONIBLE, OCCUPEE, ou FERMEE " +
+                                                "(signalée libre par findmyroom " +
+                                                "après son heure de fermeture).",
+                                        },
                                         capacite: {
                                             type: "number",
                                             nullable: true,

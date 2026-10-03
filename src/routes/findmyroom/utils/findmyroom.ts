@@ -12,6 +12,34 @@ const USER_AGENT =
 let buildingsCache: { data: Building[]; fetchedAt: number } | null = null;
 const roomsCache = new Map<string, { data: RoomsForBuilding; fetchedAt: number }>();
 
+// Once the day is over findmyroom keeps reporting every room "DISPONIBLE",
+// "libre jusqu'à 20:00" long after 20:00 has gone by. The closing time isn't
+// fixed (20:00 is only the usual one), so it's read from that sentence and
+// compared with the upstream's own clock ("heure", Paris time — the API
+// host's clock may be on another timezone).
+const FREE_UNTIL_RE = /(?:jusqu['’]à|until)\s+(\d{1,2}):(\d{2})/i;
+const CLOCK_RE = /^(\d{1,2}):(\d{2})/;
+
+function clockMinutes(match: RegExpExecArray): number {
+    return Number(match[1] ?? 0) * 60 + Number(match[2] ?? 0);
+}
+
+function markClosedRooms(data: RoomsForBuilding): RoomsForBuilding {
+    const now = CLOCK_RE.exec(data.heure);
+    if (!now) return data;
+    const nowMinutes = clockMinutes(now);
+
+    return {
+        ...data,
+        salles: data.salles.map((room) => {
+            if (room.statut !== "DISPONIBLE" || !room.libre_jusqua) return room;
+            const until = FREE_UNTIL_RE.exec(room.libre_jusqua);
+            if (!until || nowMinutes < clockMinutes(until)) return room;
+            return { ...room, statut: "FERMEE" };
+        }),
+    };
+}
+
 async function fetchJson<T>(path: string): Promise<T> {
     const res = await fetch(`${BASE_URL}${path}`, {
         headers: { "User-Agent": USER_AGENT },
@@ -27,11 +55,14 @@ export async function getBuildings(): Promise<Building[]> {
         return buildingsCache.data;
     }
     try {
-        const { batiments } = await fetchJson<{ batiments: Building[] }>(
+        const { batiments } = await fetchJson<{
+            batiments: Omit<Building, "fermees">[];
+        }>(
             "/api/batiments-stats"
         );
-        buildingsCache = { data: batiments, fetchedAt: Date.now() };
-        return batiments;
+        const data = await Promise.all(batiments.map(withoutClosedRooms));
+        buildingsCache = { data, fetchedAt: Date.now() };
+        return data;
     } catch (error) {
         // Serve a stale copy rather than failing if findmyroom is briefly down.
         if (buildingsCache) return buildingsCache.data;
@@ -47,13 +78,43 @@ export async function getRoomsForBuilding(
         return cached.data;
     }
     try {
-        const data = await fetchJson<RoomsForBuilding>(
-            `/api/salles/${encodeURIComponent(buildingCode)}`
+        const data = markClosedRooms(
+            await fetchJson<RoomsForBuilding>(
+                `/api/salles/${encodeURIComponent(buildingCode)}`
+            )
         );
         roomsCache.set(buildingCode, { data, fetchedAt: Date.now() });
         return data;
     } catch (error) {
         if (cached) return cached.data;
         throw error;
+    }
+}
+
+/**
+ * The building stats count closed rooms as free too, and don't say which
+ * rooms they counted: the building's rooms (cached, shared with the rooms
+ * route) tell how many to take off. Upstream figures are kept as they are
+ * when the rooms can't be fetched.
+ */
+async function withoutClosedRooms(
+    building: Omit<Building, "fermees">
+): Promise<Building> {
+    try {
+        const { salles } = await getRoomsForBuilding(building.code);
+        const closed = salles.filter((room) => room.statut === "FERMEE").length;
+        if (closed === 0) return { ...building, fermees: 0 };
+        const dispo = Math.max(0, building.dispo - closed);
+        return {
+            ...building,
+            dispo,
+            fermees: closed,
+            pourcentage:
+                building.total > 0
+                    ? Math.round((dispo / building.total) * 100)
+                    : 0,
+        };
+    } catch {
+        return { ...building, fermees: 0 };
     }
 }
