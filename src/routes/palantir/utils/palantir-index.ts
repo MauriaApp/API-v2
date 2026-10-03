@@ -1,10 +1,14 @@
 /**
- * The Palantir index: one in-memory catalogue of Junia's promotion plannings,
- * rebuilt at most once a week.
+ * The Palantir index: one in-memory catalogue of Junia's promotion plannings.
  *
- * It holds no credentials. The rebuild is triggered by whoever searches first
- * after the index goes stale and runs with *their* Aurion login, which keeps
- * API-v2 as stateless about credentials as the rest of the app.
+ * The API no longer harvests Aurion itself — that traffic is what got Junia's
+ * firewall to ban its egress IP (2026-09-23/24). A dedicated harvester running
+ * outside the API builds the index weekly and publishes it through
+ * /palantir/publish; it is persisted in Supabase (table palantir_index) and
+ * loaded back here at boot, so a deploy or restart never costs a harvest.
+ *
+ * It still holds no credentials: user requests are served from this index,
+ * and only a group's live planning is fetched with the caller's own session.
  */
 
 import {
@@ -15,177 +19,50 @@ import {
     PalantirLesson,
     PalantirPlanningNode,
 } from "../../../types/palantir";
-import { newSession } from "./aurion-menu";
+import { getSupabaseAdmin } from "../../supa-data/utils/supabase";
 import {
-    HarvestWindow,
-    discoverPlannings,
-    harvestAll,
-} from "./harvester";
+    IndexData,
+    RoomBucket,
+    SerializedPalantirIndex,
+    deserializeIndex,
+    harvestWindow,
+    normalize,
+} from "./index-format";
+import type { HarvestWindow } from "./harvester";
 
-/** Weeks of lessons pulled in one pass, starting a week in the past. */
-const WEEKS_BEHIND = 1;
-const WEEKS_AHEAD = 8;
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/* ------------------------------------------------------------------ time -- */
-
-/** Paris wall clock minus UTC at a given instant, DST included. */
-function parisOffsetMs(at: number): number {
-    const parts = new Intl.DateTimeFormat("en-US", {
-        timeZone: "Europe/Paris",
-        hourCycle: "h23",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-    }).formatToParts(new Date(at));
-    const get = (type: string) =>
-        Number(parts.find((p) => p.type === type)?.value ?? 0);
-    const asUtc = Date.UTC(
-        get("year"),
-        get("month") - 1,
-        get("day"),
-        get("hour"),
-        get("minute"),
-        get("second")
-    );
-    return asUtc - Math.floor(at / 1000) * 1000;
-}
-
-/** Midnight (Paris) of a day offset from `from`, as an epoch. */
-function parisMidnight(from: number, dayOffset: number): number {
-    const offset = parisOffsetMs(from);
-    const wall = new Date(from + offset);
-    const utcMidnight = Date.UTC(
-        wall.getUTCFullYear(),
-        wall.getUTCMonth(),
-        wall.getUTCDate() + dayOffset
-    );
-    // The offset can differ at the target instant (DST), so re-measure there.
-    return utcMidnight - parisOffsetMs(utcMidnight - offset);
-}
-
-/** Monday 00:00 (Paris) of the week containing `from`. */
-function mondayOfWeek(from: number): number {
-    const wall = new Date(from + parisOffsetMs(from));
-    const day = wall.getUTCDay(); // 0 = Sunday
-    return parisMidnight(from, -((day + 6) % 7));
-}
-
-/**
- * The index is anchored, not sliding: it always expires on the night from
- * Saturday to Sunday, so every client flips to a fresh index at the same
- * moment whatever time the last build happened to run.
- */
-function nextSundayMidnight(from: number): number {
-    const wall = new Date(from + parisOffsetMs(from));
-    const day = wall.getUTCDay();
-    return parisMidnight(from, day === 0 ? 7 : 7 - day);
-}
-
-function harvestWindow(now: number): HarvestWindow {
-    const monday = mondayOfWeek(now);
-    return {
-        start: monday - WEEKS_BEHIND * 7 * DAY_MS,
-        end: monday + WEEKS_AHEAD * 7 * DAY_MS,
-    };
-}
-
-/* ----------------------------------------------------------- title fields -- */
-
-const timeRange = /^\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}$/;
-
-/**
- * Room out of an Aurion title.
- *
- * Mirrors parseFromTitle in the Webapp (src/lib/utils/home.ts), deliberately:
- * the fields are fixed but a lesson can carry a free-text note that pushes
- * everything after it down, so they are counted from the time range — the only
- * reliable anchor — and never from the top.
- */
-export function readTitleRoom(title: string): string {
-    const lines = title.split("\n").map((l) => l.trim());
-    const timeIndex = lines.findIndex((line) => timeRange.test(line));
-    const typeIndex = timeIndex === -1 ? lines.length - 2 : timeIndex - 1;
-
-    if (typeIndex < 2) {
-        return lines.filter(Boolean)[0] ?? "";
-    }
-    return lines[0] ?? "";
-}
-
-/** Aurion rooms read "IC2 A412 - salle de TP - Campus …"; keep the room itself. */
-const shortRoom = (location: string) =>
-    location.split(" - ")[0]!.replace(/\s+/g, " ").trim();
-
-export const normalize = (value: string) =>
-    value
-        .normalize("NFD")
-        .replace(/[̀-ͯ]/g, "")
-        .toLowerCase()
-        .replace(/\s+/g, " ")
-        .trim();
-
-/* ---------------------------------------------------------------- store --- */
-
-interface Bucket {
-    label: string;
-    detail: string;
-    lessonIds: Set<string>;
-}
-
-interface IndexData {
-    builtAt: number;
-    expiresAt: number;
-    window: HarvestWindow;
-    lessons: Map<string, PalantirLesson>;
-    rooms: Map<string, Bucket>;
-    groups: PalantirGroup[];
-    nodes: PalantirPlanningNode[];
-    failed: string[];
-}
+/** Table rows kept per build: the current index and the one before it. */
+const KEPT_VERSIONS = 2;
 
 let data: IndexData | null = null;
-let building: Promise<void> | null = null;
-let progress: {
-    phase: "plannings" | "events";
-    done: number;
-    total: number;
-    startedAt: number;
-} = { phase: "plannings", done: 0, total: 0, startedAt: 0 };
 
-/** Why the last build failed, surfaced so a broken harvest is visible. */
+/** Why the last load or publish failed, surfaced through /palantir/status. */
 let lastError: string | null = null;
 
 const emptyCounts = { lessons: 0, rooms: 0, groups: 0 };
 
 /**
- * Kill switch: while this is false, every query answers empty and no harvest
- * is ever started (Junia's firewall bans the API's egress IP over harvest
- * traffic). Flip back to true to re-enable Palantir.
+ * Kill switch, kept from the maintenance period. The harvest traffic moved
+ * off the API, so it defaults to enabled; set PALANTIR_ENABLED=false (a Fly
+ * secret is enough, no deploy) to answer empty results again.
  */
-export const PALANTIR_ENABLED = false;
+export const PALANTIR_ENABLED = process.env.PALANTIR_ENABLED !== "false";
 
 export function isStale(at: number = Date.now()): boolean {
     return !data || at >= data.expiresAt;
 }
 
 export function getStatus(): PalantirIndexStatus {
-    const stale = isStale();
     return {
-        state: building ? "building" : data ? "ready" : "empty",
-        phase: building ? progress.phase : null,
-        done: building ? progress.done : 0,
-        total: building ? progress.total : 0,
-        elapsedMs: building ? Date.now() - progress.startedAt : 0,
+        state: data ? "ready" : "empty",
+        phase: null,
+        done: 0,
+        total: 0,
+        elapsedMs: 0,
         builtAt: data?.builtAt ?? null,
         expiresAt: data?.expiresAt ?? null,
         windowStart: data?.window.start ?? null,
         windowEnd: data?.window.end ?? null,
-        stale: Boolean(data) && stale,
+        stale: Boolean(data) && isStale(),
         error: lastError,
         failed: data?.failed ?? [],
         counts: data
@@ -198,107 +75,118 @@ export function getStatus(): PalantirIndexStatus {
     };
 }
 
-function addToBucket(
-    map: Map<string, Bucket>,
-    key: string,
-    label: string,
-    detail: string,
-    lessonId: string
-) {
-    const existing = map.get(key);
-    if (existing) {
-        existing.lessonIds.add(lessonId);
-        return;
+/* ---------------------------------------------------------- persistence -- */
+
+/**
+ * Load the newest persisted index at boot. Fails soft: an unreachable
+ * Supabase or a missing table leaves the API serving empty results, never
+ * a broken boot.
+ */
+export async function loadPersistedIndex(): Promise<boolean> {
+    const supabaseAdmin = getSupabaseAdmin();
+    if (!supabaseAdmin) {
+        lastError =
+            "SUPABASE_SERVICE_KEY is not configured — palantir_index sits behind RLS";
+        console.warn(`[palantir] ${lastError}`);
+        return false;
     }
-    map.set(key, { label, detail, lessonIds: new Set([lessonId]) });
+
+    const { data: row, error } = await supabaseAdmin
+        .from("palantir_index")
+        .select("id, payload")
+        .order("id", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (error || !row) {
+        lastError = error ? `Supabase: ${error.message}` : "aucun index persisté";
+        console.warn(`[palantir] no persisted index (${lastError})`);
+        return false;
+    }
+
+    try {
+        data = deserializeIndex(row.payload as SerializedPalantirIndex);
+    } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        console.warn(`[palantir] persisted index unreadable: ${lastError}`);
+        return false;
+    }
+
+    lastError = null;
+    console.log(
+        `[palantir] index loaded from Supabase (row ${row.id}): ` +
+            `${data.lessons.size} lessons, ${data.rooms.size} rooms, ` +
+            `${data.groups.length} groups`
+    );
+    return true;
 }
 
 /**
- * Rebuild the whole index. Concurrent callers join the build already in
- * flight instead of starting a second harvest, and the previous index keeps
- * being served until the new one is complete.
+ * Validate and persist a freshly harvested index (see /palantir/publish),
+ * then serve it. The previous version stays in the table until this one is
+ * safely written, so a crash never leaves the API indexless.
  */
-export function ensureIndex(email: string, password: string): Promise<void> {
-    if (building) return building;
-    if (!isStale()) return Promise.resolve();
+export async function publishIndex(
+    payload: SerializedPalantirIndex
+): Promise<void> {
+    const supabaseAdmin = getSupabaseAdmin();
+    const fresh = deserializeIndex(payload);
+    if (fresh.expiresAt <= Date.now()) {
+        throw new Error("index déjà expiré, refusé");
+    }
+    if (!fresh.nodes.length) {
+        throw new Error("index sans plannings, refusé");
+    }
 
-    building = build(email, password)
-        .then(() => {
-            lastError = null;
-        })
-        .catch((error: unknown) => {
-            lastError =
-                error instanceof Error ? error.message : String(error);
-            throw error;
-        })
-        .finally(() => {
-            building = null;
-        });
-    return building;
-}
-
-async function build(email: string, password: string): Promise<void> {
-    const now = Date.now();
-    const window = harvestWindow(now);
-
-    progress = { phase: "plannings", done: 0, total: 0, startedAt: now };
-    const scout = newSession();
-    // The scout walks stateful menus on its own session, like every Palantir
-    // session — never the shared cached one.
-    await scout.login(email, password, { noCache: true });
-    const nodes = await discoverPlannings(scout);
-
-    progress = { ...progress, phase: "events", done: 0, total: nodes.length };
-
-    const lessons = new Map<string, PalantirLesson>();
-    const rooms = new Map<string, Bucket>();
-    const groups: PalantirGroup[] = [];
-    const failed: string[] = [];
-
-    await harvestAll(email, password, nodes, window, (node, result, error) => {
-        progress = { ...progress, done: progress.done + 1 };
-        if (error || !result) {
-            failed.push(node.label);
-            return;
-        }
-        groups.push(...result.groups);
-        for (const lesson of result.lessons) {
-            // The same lesson can surface under two classes.
-            if (lessons.has(lesson.id)) continue;
-            lessons.set(lesson.id, lesson);
-
-            const room = readTitleRoom(lesson.title);
-            const shortened = shortRoom(room);
-            if (shortened) {
-                addToBucket(
-                    rooms,
-                    normalize(shortened),
-                    shortened,
-                    room === shortened ? "" : room,
-                    lesson.id
-                );
-            }
-        }
-    });
-
-    // A run where every planning failed is a broken session or a changed
-    // Aurion, not an empty week: keep the previous index rather than wipe it.
-    if (nodes.length && failed.length === nodes.length) {
+    if (!supabaseAdmin) {
         throw new Error(
-            `indexation échouée sur les ${nodes.length} plannings (Aurion a peut-être changé)`
+            "SUPABASE_SERVICE_KEY is not configured — cannot persist the index"
         );
     }
 
-    data = {
-        builtAt: Date.now(),
-        expiresAt: nextSundayMidnight(Date.now()),
-        window,
-        lessons,
-        rooms,
-        groups,
-        nodes,
-        failed,
-    };
+    const { data: inserted, error } = await supabaseAdmin
+        .from("palantir_index")
+        .insert({
+            built_at: fresh.builtAt,
+            expires_at: fresh.expiresAt,
+            window_start: fresh.window.start,
+            window_end: fresh.window.end,
+            payload,
+        })
+        .select("id")
+        .single();
+
+    if (error || !inserted) {
+        throw new Error(
+            error ? `Supabase: ${error.message}` : "insertion sans résultat"
+        );
+    }
+
+    const keepIds = await supabaseAdmin
+        .from("palantir_index")
+        .select("id")
+        .order("id", { ascending: false })
+        .limit(KEPT_VERSIONS);
+    const keepList = (keepIds.data ?? [])
+        .map((row) => row.id)
+        .filter((id) => id !== inserted.id);
+    if (keepList.length) {
+        const { error: pruneError } = await supabaseAdmin
+            .from("palantir_index")
+            .delete()
+            .not("id", "in", `(${[inserted.id, ...keepList].join(",")})`);
+        if (pruneError) {
+            console.warn(`[palantir] prune failed: ${pruneError.message}`);
+        }
+    }
+
+    data = fresh;
+    lastError = null;
+    console.log(
+        `[palantir] index published (row ${inserted.id}): ` +
+            `${fresh.lessons.size} lessons, ${fresh.rooms.size} rooms, ` +
+            `${fresh.groups.length} groups, expires ${new Date(fresh.expiresAt).toISOString()}`
+    );
 }
 
 /* --------------------------------------------------------------- queries -- */
@@ -321,7 +209,7 @@ export function search(
 
     const scored: Array<{ score: number; entity: PalantirEntity }> = [];
 
-    const pushBucket = (map: Map<string, Bucket>, kind: "room") => {
+    const pushBucket = (map: Map<string, RoomBucket>, kind: "room") => {
         for (const [key, bucket] of map) {
             const score = scoreOf(key, needle);
             if (!score) continue;
@@ -421,18 +309,3 @@ export function resolveGroup(
 
 export const currentWindow = (): HarvestWindow =>
     data?.window ?? harvestWindow(Date.now());
-
-/**
- * Start a rebuild without waiting for it. Requests answer immediately — with
- * the previous index when there is one — and the client polls /palantir/status
- * for the progress bar.
- */
-export function kickBuild(
-    email: string,
-    password: string,
-    onError: (error: unknown) => void
-): void {
-    if (!PALANTIR_ENABLED) return;
-    if (building || !isStale()) return;
-    void ensureIndex(email, password).catch(onError);
-}

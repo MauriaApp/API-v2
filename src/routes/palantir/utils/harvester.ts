@@ -27,11 +27,19 @@ import {
     PalantirPlanningNode,
 } from "../../../types/palantir";
 
-/** Politeness delay between two calls of the same worker. */
-export const DELAY_MS = 150;
+/**
+ * Politeness delay between two calls of the same worker. Overridable so the
+ * external harvester can slow down further without a code change.
+ */
+export const DELAY_MS = Number(process.env.PALANTIR_DELAY_MS ?? 400);
 
-/** Independent Aurion sessions used to harvest in parallel. */
-export const WORKERS = 6;
+/**
+ * Independent Aurion sessions used to harvest in parallel. The API itself no
+ * longer harvests — the weekly build runs on a dedicated machine outside Fly,
+ * one planning after the other, precisely because parallel harvests are what
+ * got Junia's firewall to ban the API's egress IP (2026-09-23/24).
+ */
+export const WORKERS = Number(process.env.PALANTIR_WORKERS ?? 1);
 
 export interface HarvestWindow {
     start: number;

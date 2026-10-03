@@ -6,7 +6,6 @@ import { fetchGroupLessons } from "../utils/harvester";
 import {
     currentWindow,
     getStatus,
-    kickBuild,
     lessonsFor,
     resolveGroup,
 } from "../utils/palantir-index";
@@ -99,12 +98,8 @@ export async function palantirPlanningRoute(fastify: FastifyInstance) {
         async (request, reply) => {
             const { email, password, kind, id, startTimestamp, endTimestamp } =
                 request.body;
-
             try {
                 if (kind === "room") {
-                    kickBuild(email, password, (error) =>
-                        Sentry.captureException(error)
-                    );
                     return {
                         success: true,
                         data: lessonsFor(
