@@ -12,6 +12,7 @@ import crousRoutes from "./routes/crous/index";
 import printRoutes from "./routes/print/index";
 import badjuniaRoutes from "./routes/badjunia/index";
 import palantirRoutes from "./routes/palantir/index";
+import { loadPersistedIndex } from "./routes/palantir/utils/palantir-index";
 import devRoutes from "./routes/dev/index";
 
 import Sentry from "@sentry/node";
@@ -93,6 +94,26 @@ const start = async () => {
                 docExpansion: "list",
                 deepLinking: false,
             },
+        });
+
+        // Palantir: load the persisted index (if any) before serving, so the
+        // first request after a deploy already answers search results. A
+        // missing index is not a boot failure — it just serves empty results
+        // until the weekly harvester publishes a fresh one — and a hanging
+        // Supabase must not wedge the boot either.
+        await new Promise<void>((resolve) => {
+            const timer = setTimeout(() => {
+                console.warn(
+                    "[palantir] index load timed out, serving without it"
+                );
+                resolve();
+            }, 15000);
+            loadPersistedIndex()
+                .catch(() => false)
+                .then(() => {
+                    clearTimeout(timer);
+                    resolve();
+                });
         });
 
         await app.listen({ port: Number(port), host });

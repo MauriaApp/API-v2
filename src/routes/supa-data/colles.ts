@@ -1,5 +1,5 @@
 import { FastifyInstance } from "fastify";
-import { supabaseAdmin } from "./utils/supabase";
+import { getSupabaseAdmin } from "./utils/supabase";
 
 type ColleStudentRow = {
     class: string;
@@ -135,6 +135,7 @@ export async function collesGroupRoute(fastify: FastifyInstance) {
         },
         async (request, reply) => {
             try {
+                const supabaseAdmin = getSupabaseAdmin();
                 if (!supabaseAdmin) {
                     throw new Error(
                         "SUPABASE_SERVICE_KEY is not configured — colles_students sits behind RLS and can't be read with the anon key"

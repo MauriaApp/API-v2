@@ -1,10 +1,9 @@
 import { FastifyInstance } from "fastify";
-import Sentry from "@sentry/node";
 import {
     PalantirEntityKind,
     PalantirSearchRequest,
 } from "../../../types/palantir";
-import { getStatus, kickBuild, search } from "../utils/palantir-index";
+import { getStatus, search } from "../utils/palantir-index";
 import { statusSchema } from "../status/route";
 
 const ALL_KINDS: PalantirEntityKind[] = ["room", "group"];
@@ -15,7 +14,7 @@ export async function palantirSearchRoute(fastify: FastifyInstance) {
         {
             schema: {
                 description:
-                    "Recherche une salle ou un groupe/classe dans l'index Palantir. Si l'index est périmé, l'ancien est servi pendant que le nouveau se construit ; s'il est vide, la réponse arrive avec une liste vide et un état \"building\" à sonder via /palantir/status.",
+                    "Recherche une salle ou un groupe/classe dans l'index Palantir. L'index est moissonné hebdomadairement par un harvester externe et publié via /palantir/publish ; cette route ne fait que lire.",
                 body: {
                     type: "object",
                     properties: {
@@ -79,11 +78,7 @@ export async function palantirSearchRoute(fastify: FastifyInstance) {
             },
         },
         async (request) => {
-            const { email, password, q, kinds, limit } = request.body;
-
-            kickBuild(email, password, (error) =>
-                Sentry.captureException(error)
-            );
+            const { q, kinds, limit } = request.body;
 
             const wanted =
                 kinds && kinds.length

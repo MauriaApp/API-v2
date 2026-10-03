@@ -60,6 +60,11 @@ export class SessionManager {
         this._client ??= got.extend({
             cookieJar: this.cookieJar,
             https: { rejectUnauthorized: false },
+            // Aurion blackholes instead of refusing when its firewall bans
+            // the caller: without a timeout, every request then hangs until
+            // the socket dies (~90 s), wedging the whole app. Fail fast so
+            // the user gets a clear error instead.
+            timeout: { request: 30_000 },
             headers: {
                 "User-Agent":
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0",

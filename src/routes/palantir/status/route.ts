@@ -1,7 +1,6 @@
 import { FastifyInstance } from "fastify";
-import Sentry from "@sentry/node";
 import { IdRequest } from "../../../types/aurion";
-import { getStatus, kickBuild } from "../utils/palantir-index";
+import { getStatus } from "../utils/palantir-index";
 
 /** Shared by the three Palantir routes so the client always gets the progress. */
 export const statusSchema = {
@@ -50,7 +49,7 @@ export async function palantirStatusRoute(fastify: FastifyInstance) {
         {
             schema: {
                 description:
-                    "État de l'index Palantir. Déclenche sa (re)construction s'il est absent ou périmé — l'index expire chaque dimanche à 00:00 (Paris). Répond immédiatement : la construction tourne en arrière-plan, ce point d'entrée est fait pour être sondé pendant ce temps.",
+                    "État de l'index Palantir (construit par le harvester externe, publié via /palantir/publish, expiré chaque dimanche à 00:00 Paris). Lecture seule — la (re)construction n'est plus déclenchée par les utilisateurs.",
                 body: {
                     type: "object",
                     properties: {
@@ -72,9 +71,6 @@ export async function palantirStatusRoute(fastify: FastifyInstance) {
             },
         },
         async (request) => {
-            kickBuild(request.body.email, request.body.password, (error) =>
-                Sentry.captureException(error)
-            );
             return { success: true, data: getStatus() };
         }
     );
