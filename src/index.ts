@@ -1,3 +1,6 @@
+// Loads .env / .env.dev before anything else: every module below reads
+// process.env at import time, so this must stay the first import.
+import { isDev } from "./utils/env";
 import Fastify from "fastify";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
@@ -11,7 +14,6 @@ import badjuniaRoutes from "./routes/badjunia/index";
 import palantirRoutes from "./routes/palantir/index";
 import devRoutes from "./routes/dev/index";
 
-import { isDev } from "./utils/env";
 import Sentry from "@sentry/node";
 import "./utils/sentry";
 
