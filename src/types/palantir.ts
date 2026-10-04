@@ -44,6 +44,13 @@ export interface PalantirPlanningNode {
     filiere: string;
 }
 
+/** A student of a promotion, read off the event dialog's Apprenants tab. */
+export interface PalantirStudent {
+    /** Family name, uppercase as Aurion writes it. */
+    lastName: string;
+    firstName: string;
+}
+
 /** A row of a planning's group-selection DataTable. */
 export interface PalantirGroup {
     /** Aurion row key, used to tick the row when asking for its schedule. */
@@ -58,6 +65,20 @@ export interface PalantirGroup {
     menuid: string;
     /** Label of that planning, e.g. "Planning ISEN CPG2". */
     planningLabel: string;
+    /**
+     * The promotion's students, harvested once a week off the planning's
+     * event dialog. Only Promotion rows get one, and it never surfaces in
+     * /palantir/search — the roster is indexed for internal use only.
+     */
+    students?: PalantirStudent[];
+    /**
+     * The promotion's own lessons over the harvest window, read by the same
+     * roster pass (it already opens each class's planning alone). Lets
+     * /palantir/planning serve a class instantly from the index instead of
+     * a ~15s live Aurion fetch; the live fetch stays as a fallback for
+     * indexes built before this existed.
+     */
+    lessonIds?: string[];
 }
 
 export type PalantirIndexState = "empty" | "building" | "ready";
@@ -107,4 +128,33 @@ export interface PalantirPlanningRequest {
     id: string;
     startTimestamp?: number;
     endTimestamp?: number;
+}
+
+/** One teacher of the index, with how many of its lessons they teach. */
+export interface PalantirTeacher {
+    /** As Aurion writes it, e.g. "Monsieur BELLEUDY" or "HOUSEZ". */
+    name: string;
+    lessons: number;
+}
+
+/** One student of a promotion roster, with their class. */
+export interface PalantirStudentResult {
+    firstName: string;
+    lastName: string;
+    className: string;
+    /** The class as a Palantir entity id, so a click can open its planning. */
+    groupId: string;
+}
+
+/** The answer of /palantir/people — admin-only, never in /palantir/search. */
+export interface PalantirPersonResult {
+    teachers: PalantirTeacher[];
+    students: PalantirStudentResult[];
+}
+
+export interface PalantirPeopleRequest {
+    email: string;
+    password: string;
+    q: string;
+    limit?: number;
 }

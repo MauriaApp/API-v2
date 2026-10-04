@@ -111,6 +111,18 @@ export function readTitleRoom(title: string): string {
     return lines[0] ?? "";
 }
 
+/**
+ * Teacher out of an Aurion title — the line right after the time range,
+ * the only reliable anchor. "Monsieur BELLEUDY", "HOUSEZ"… empty when the
+ * slot has none (supervision, free study).
+ */
+export function readTitleTeacher(title: string): string {
+    const lines = title.split("\n").map((l) => l.trim());
+    const timeIndex = lines.findIndex((line) => timeRange.test(line));
+    if (timeIndex === -1) return "";
+    return lines[timeIndex + 1] ?? "";
+}
+
 /** Aurion rooms read "IC2 A412 - salle de TP - Campus …"; keep the room itself. */
 const shortRoom = (location: string) =>
     location.split(" - ")[0]!.replace(/\s+/g, " ").trim();
@@ -120,6 +132,9 @@ export const normalize = (value: string) =>
         .normalize("NFD")
         .replace(/[̀-ͯ]/g, "")
         .toLowerCase()
+        // Aurion writes IC1 rooms with an underscore ("IC1_017 amphi") that
+        // nobody types; fold it into a space so "ic1 017" matches.
+        .replace(/_/g, " ")
         .replace(/\s+/g, " ")
         .trim();
 
@@ -192,7 +207,13 @@ export function buildIndexData(
 
     for (const { node, result } of entries) {
         nodes.push(node);
-        groups.push(...result.groups);
+        // Only classes are index entities. Their subgroups (languages, TP,
+        // half-groups…) are still ticked at harvest time so their lessons
+        // feed the index, but each is covered by the class it belongs to
+        // and must not surface as a searchable entity.
+        groups.push(
+            ...result.groups.filter((group) => group.type === "Promotion")
+        );
         for (const lesson of result.lessons) {
             if (lessons.has(lesson.id)) continue;
             lessons.set(lesson.id, lesson);
@@ -279,7 +300,12 @@ export function deserializeIndex(
         window: payload.window,
         lessons,
         rooms,
-        groups: payload.groups,
+        // Old persisted payloads still carry subgroups; they are gone from
+        // freshly built indexes, but loading filters them the same way so
+        // the API drops them before the next weekly publish.
+        groups: payload.groups.filter(
+            (group) => group?.type === "Promotion"
+        ),
         nodes: payload.nodes,
         failed: Array.isArray(payload.failed) ? payload.failed : [],
     };

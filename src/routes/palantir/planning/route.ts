@@ -7,6 +7,7 @@ import {
     currentWindow,
     getStatus,
     lessonsFor,
+    lessonsForGroup,
     resolveGroup,
 } from "../utils/palantir-index";
 import { statusSchema } from "../status/route";
@@ -17,7 +18,7 @@ export async function palantirPlanningRoute(fastify: FastifyInstance) {
         {
             schema: {
                 description:
-                    "Emploi du temps d'une entité renvoyée par /palantir/search. Les salles sont servies depuis l'index ; un groupe est récupéré en direct sur Aurion, car la moisson coche toutes les classes à la fois et ne dit pas à quel groupe appartient un cours. ATTENTION: Les timestamps sont en MILLISECONDES !",
+                    "Emploi du temps d'une entité renvoyée par /palantir/search. Salles et classes sont servies depuis l'index (le pass des rosters récolte le planning propre de chaque promotion) ; une classe sans leçons indexées est récupérée en direct sur Aurion, ~15 s. ATTENTION: Les timestamps sont en MILLISECONDES !",
                 body: {
                     type: "object",
                     properties: {
@@ -118,6 +119,22 @@ export async function palantirPlanningRoute(fastify: FastifyInstance) {
                         success: false,
                         error: "Groupe inconnu de l'index, relance une recherche.",
                     });
+                }
+
+                // The roster pass indexes each promotion's own planning:
+                // serve it instantly, like a room's. Null = the index has
+                // none for this group (older index, failed pass) → live.
+                const indexed = lessonsForGroup(
+                    id,
+                    startTimestamp,
+                    endTimestamp
+                );
+                if (indexed) {
+                    return {
+                        success: true,
+                        data: indexed,
+                        status: getStatus(),
+                    };
                 }
 
                 const window = currentWindow();

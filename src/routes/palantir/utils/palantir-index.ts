@@ -17,6 +17,7 @@ import {
     PalantirGroup,
     PalantirIndexStatus,
     PalantirLesson,
+    PalantirPersonResult,
     PalantirPlanningNode,
 } from "../../../types/palantir";
 import { getSupabaseAdmin } from "../../supa-data/utils/supabase";
@@ -27,6 +28,7 @@ import {
     deserializeIndex,
     harvestWindow,
     normalize,
+    readTitleTeacher,
 } from "./index-format";
 import type { HarvestWindow } from "./harvester";
 
@@ -231,6 +233,8 @@ export function search(
 
     if (kinds.includes("group")) {
         for (const group of data.groups) {
+            // Index groups are classes only — subgroups never enter the
+            // index (see buildIndexData).
             const score = Math.max(
                 scoreOf(normalize(group.label), needle),
                 scoreOf(normalize(group.code), needle)
@@ -244,9 +248,7 @@ export function search(
                     label: group.label || group.code,
                     detail: group.planningLabel,
                     type: group.type,
-                    // A class is what most people mean; float it above
-                    // its own subgroups, which share most of its name.
-                    count: group.type === "Promotion" ? 1 : 0,
+                    count: 0,
                 },
             });
         }
@@ -264,6 +266,10 @@ export function search(
 }
 
 /** Indexed lessons of a room, clipped to an optional range. */
+/** Aurion writes "+0200"; Date wants "+02:00". */
+const lessonEpoch = (lesson: PalantirLesson) =>
+    new Date(lesson.start.replace(/([+-]\d{2})(\d{2})$/, "$1:$2")).getTime();
+
 export function lessonsFor(
     kind: "room",
     id: string,
@@ -279,15 +285,101 @@ export function lessonsFor(
         const lesson = data.lessons.get(lessonId);
         if (!lesson) continue;
         if (start !== undefined || end !== undefined) {
-            const at = new Date(
-                lesson.start.replace(/([+-]\d{2})(\d{2})$/, "$1:$2")
-            ).getTime();
+            const at = lessonEpoch(lesson);
             if (start !== undefined && at < start) continue;
             if (end !== undefined && at > end) continue;
         }
         lessons.push(lesson);
     }
     return lessons.sort((a, b) => a.start.localeCompare(b.start));
+}
+
+/**
+ * Indexed lessons of a class, clipped to an optional range — the roster
+ * pass harvests each promotion's own planning, so a class schedule is
+ * served instantly like a room's. Null when the index has none for this
+ * group (pre-lessonIds index, or the pass failed for that promotion):
+ * the caller falls back to the live Aurion fetch.
+ */
+export function lessonsForGroup(
+    id: string,
+    start?: number,
+    end?: number
+): PalantirLesson[] | null {
+    if (!PALANTIR_ENABLED || !data) return null;
+    const resolved = resolveGroup(id);
+    const lessonIds = resolved?.group.lessonIds;
+    if (!resolved || !lessonIds?.length) return null;
+
+    const lessons: PalantirLesson[] = [];
+    for (const lessonId of lessonIds) {
+        const lesson = data.lessons.get(lessonId);
+        if (!lesson) continue;
+        if (start !== undefined || end !== undefined) {
+            const at = lessonEpoch(lesson);
+            if (start !== undefined && at < start) continue;
+            if (end !== undefined && at > end) continue;
+        }
+        lessons.push(lesson);
+    }
+    return lessons.sort((a, b) => a.start.localeCompare(b.start));
+}
+
+/**
+ * Teachers and students matching a query — the admin-only people search
+ * behind /palantir/people. Teachers are read off the indexed lesson
+ * titles (the line after the time range), students off the promotion
+ * rosters harvested weekly; both stay invisible to /palantir/search.
+ */
+export function searchPeople(
+    query: string,
+    limit: number
+): PalantirPersonResult {
+    const empty: PalantirPersonResult = { teachers: [], students: [] };
+    if (!PALANTIR_ENABLED || !data) return empty;
+    const needle = normalize(query);
+    if (!needle) return empty;
+
+    const teachers = new Map<string, number>();
+    for (const lesson of data.lessons.values()) {
+        const name = readTitleTeacher(lesson.title);
+        if (!name) continue;
+        if (!scoreOf(normalize(name), needle)) continue;
+        teachers.set(name, (teachers.get(name) ?? 0) + 1);
+    }
+
+    const students: PalantirPersonResult["students"] = [];
+    for (const group of data.groups) {
+        for (const student of group.students ?? []) {
+            const direct = `${student.firstName} ${student.lastName}`;
+            const reversed = `${student.lastName} ${student.firstName}`;
+            if (
+                !scoreOf(normalize(direct), needle) &&
+                !scoreOf(normalize(reversed), needle)
+            ) {
+                continue;
+            }
+            students.push({
+                firstName: student.firstName,
+                lastName: student.lastName,
+                className: group.label || group.code,
+                groupId: `${group.menuid}:${group.rowKey}`,
+            });
+        }
+    }
+
+    return {
+        teachers: [...teachers.entries()]
+            .map(([name, lessons]) => ({ name, lessons }))
+            .sort((a, b) => b.lessons - a.lessons || a.name.localeCompare(b.name))
+            .slice(0, limit),
+        students: students
+            .sort((a, b) =>
+                a.className.localeCompare(b.className) ||
+                a.lastName.localeCompare(b.lastName)
+            )
+            .slice(0, limit),
+    };
 }
 
 /** The planning node and row key behind a group entity id. */

@@ -52,6 +52,32 @@ const log = (message: string) =>
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * The service starts the daemon right after wg-quick up, and the first
+ * Aurion call can race the tunnel coming up ("Client network socket
+ * disconnected before secure TLS connection was established"). A few
+ * retries with a delay absorb that race — the weekly timer has no other
+ * chance until next Sunday.
+ */
+async function loginWithRetry(
+    email: string,
+    password: string,
+    attempts = 4
+): Promise<ReturnType<typeof newSession>> {
+    for (let attempt = 1; ; attempt++) {
+        const session = newSession();
+        try {
+            await session.login(email, password, { noCache: true });
+            return session;
+        } catch (error) {
+            if (attempt >= attempts) throw error;
+            const reason = error instanceof Error ? error.message : String(error);
+            log(`login attempt ${attempt}/${attempts} failed: ${reason}`);
+            await sleep(attempt * 5_000);
+        }
+    }
+}
+
 interface HarvestEntry {
     node: PalantirPlanningNode;
     result: { groups: PalantirGroup[]; lessons: PalantirLesson[] };
@@ -67,8 +93,7 @@ async function harvest(email: string, password: string): Promise<IndexData> {
             ` (workers: ${process.env.PALANTIR_WORKERS ?? 1}, delay: ${process.env.PALANTIR_DELAY_MS ?? 400} ms)`
     );
 
-    const scout = newSession();
-    await scout.login(email, password, { noCache: true });
+    const scout = await loginWithRetry(email, password);
     const nodes = await discoverPlannings(scout);
     log(`discovered ${nodes.length} plannings`);
 
@@ -89,7 +114,8 @@ async function harvest(email: string, password: string): Promise<IndexData> {
         entries.push({ node, result });
         log(
             `${done}/${nodes.length} ${node.label} — ` +
-                `${result.groups.length} groups, ${result.lessons.length} lessons`
+                `${result.groups.length} groups, ${result.lessons.length} lessons, ` +
+                `${result.groups.filter((g) => g.students?.length).length} rosters`
         );
     });
 
@@ -101,9 +127,13 @@ async function harvest(email: string, password: string): Promise<IndexData> {
 
     const data = buildIndexData(window, entries);
     data.failed = failed;
+    const students = data.groups.reduce(
+        (total, group) => total + (group.students?.length ?? 0),
+        0
+    );
     log(
         `harvest done — ${data.lessons.size} lessons, ${data.rooms.size} rooms, ` +
-            `${data.groups.length} groups, ${failed.length} failed plannings`
+            `${data.groups.length} groups, ${students} students, ${failed.length} failed plannings`
     );
     return data;
 }
