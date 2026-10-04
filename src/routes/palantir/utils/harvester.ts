@@ -17,6 +17,7 @@ import {
     newSession,
     openLeaf,
     openMenu,
+    parsePartialViewState,
     parseSidebarEntries,
     parseViewState,
     sleep,
@@ -25,6 +26,7 @@ import {
     PalantirGroup,
     PalantirLesson,
     PalantirPlanningNode,
+    PalantirStudent,
 } from "../../../types/palantir";
 
 /**
@@ -244,20 +246,24 @@ async function readAllGroups(
     );
 }
 
+/** A planning page opened by ticking `rowKeys` on the selection screen. */
+interface GroupPlanning {
+    url: string;
+    body: string;
+    scheduleId: string;
+}
+
 /**
- * Tick `rowKeys` on the selection screen, land on the Schedule, and ask it for
- * the lessons of `window`. The widget takes an arbitrary range, so a single
- * pass can cover several weeks at once.
+ * Tick `rowKeys`, land on the Schedule, and return the live planning page.
  */
-async function readLessons(
+async function openGroupPlanning(
     session: Session,
     choiceUrl: string,
     choiceBody: string,
     tableId: string,
     submitId: string,
-    rowKeys: string[],
-    window: HarvestWindow
-): Promise<PalantirLesson[]> {
+    rowKeys: string[]
+): Promise<GroupPlanning> {
     const fields = formFields(choiceBody);
     fields.set("form", "form");
     fields.set(`${tableId}_selection`, rowKeys.join(","));
@@ -268,10 +274,10 @@ async function readLessons(
         body: fields.toString(),
         responseType: "text",
     });
-    const planningUrl = shown.headers.location
+    const url = shown.headers.location
         ? new URL(shown.headers.location, BASE).toString()
         : `${BASE}/faces/Planning.xhtml`;
-    const planning = await session.client.get(planningUrl, {
+    const planning = await session.client.get(url, {
         headers: { Referer: choiceUrl },
         responseType: "text",
     });
@@ -281,26 +287,306 @@ async function readLessons(
         /PrimeFaces\.cw\("Schedule","[^"]+",\{id:"([^"]+)"/
     )?.[1];
     if (!scheduleId) throw new Error("widget Schedule introuvable");
+    return { url, body: planning.body, scheduleId };
+}
 
-    const ev = formFields(planning.body);
+/**
+ * Ask the Schedule widget for the events of `window` — a single pass can
+ * cover several weeks. Also hands back the refreshed ViewState the next
+ * partial request on this page must use.
+ */
+async function requestEvents(
+    session: Session,
+    page: GroupPlanning,
+    window: HarvestWindow
+): Promise<{ events: PalantirLesson[]; viewState: string }> {
+    const ev = formFields(page.body);
     ev.set("javax.faces.partial.ajax", "true");
-    ev.set("javax.faces.source", scheduleId);
-    ev.set("javax.faces.partial.execute", scheduleId);
-    ev.set("javax.faces.partial.render", scheduleId);
-    ev.set(scheduleId, scheduleId);
-    ev.set(`${scheduleId}_start`, String(window.start));
-    ev.set(`${scheduleId}_end`, String(window.end));
-    ev.set(`${scheduleId}_view`, "agendaWeek");
+    ev.set("javax.faces.source", page.scheduleId);
+    ev.set("javax.faces.partial.execute", page.scheduleId);
+    ev.set("javax.faces.partial.render", page.scheduleId);
+    ev.set(page.scheduleId, page.scheduleId);
+    ev.set(`${page.scheduleId}_start`, String(window.start));
+    ev.set(`${page.scheduleId}_end`, String(window.end));
+    ev.set(`${page.scheduleId}_view`, "agendaWeek");
     ev.set("form", "form");
     ev.set("form:offsetFuseauNavigateur", "-7200000");
-    ev.set("javax.faces.ViewState", parseViewState(planning.body));
+    ev.set("javax.faces.ViewState", parseViewState(page.body));
 
-    const res = await session.client.post(planningUrl, {
+    const res = await session.client.post(page.url, {
         body: ev.toString(),
         responseType: "text",
     });
     const json = res.body.match(/\[\{"id"[\s\S]*?\}\]/)?.[0];
-    return json ? (JSON.parse(json) as PalantirLesson[]) : [];
+    return {
+        events: json ? (JSON.parse(json) as PalantirLesson[]) : [],
+        viewState:
+            parsePartialViewState(res.body) || parseViewState(page.body),
+    };
+}
+
+/**
+ * The lessons of one set of rows, read in one pass over `window`.
+ */
+async function readLessons(
+    session: Session,
+    choiceUrl: string,
+    choiceBody: string,
+    tableId: string,
+    submitId: string,
+    rowKeys: string[],
+    window: HarvestWindow
+): Promise<PalantirLesson[]> {
+    const page = await openGroupPlanning(
+        session,
+        choiceUrl,
+        choiceBody,
+        tableId,
+        submitId,
+        rowKeys
+    );
+    const { events } = await requestEvents(session, page, window);
+    return events;
+}
+
+/** Rows of the event dialog's Apprenants DataTable — Nom, then Prénom. */
+function parseParticipants(partial: string): PalantirStudent[] {
+    const tbody = partial.match(
+        /<tbody id="form:onglets:apprenantsTable_data"[^>]*>([\s\S]*?)<\/tbody>/
+    )?.[1];
+    if (!tbody || tbody.includes("ui-datatable-empty-message")) return [];
+
+    const students: PalantirStudent[] = [];
+    for (const m of tbody.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)) {
+        const cells = [...(m[1] ?? "").matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)]
+            .map((c) => stripTags(c[1] ?? ""));
+        const [lastName, firstName] = cells;
+        if (!lastName || !firstName) continue;
+        students.push({ lastName, firstName });
+    }
+    return students;
+}
+
+/**
+ * The labels of the groups an event is attached to, off its "Groupes" tab.
+ * The tab is found through its nav link rather than its j_idt id, which is
+ * only stable as long as Aurion's template is.
+ */
+function parseGroupLabels(partial: string): string[] {
+    const panelId = partial.match(
+        /href="#(form:onglets:[^"]+)"[^>]*>\s*Groupes\s*</
+    )?.[1];
+    if (!panelId) return [];
+    // The tab panel and the DataTable it holds have different j_idt ids;
+    // the table is the first DataTable inside the panel's own div.
+    const panelStart = partial.indexOf(`id="${panelId}"`);
+    if (panelStart === -1) return [];
+    const chunk = partial.slice(panelStart, panelStart + 30_000);
+    const tbody = chunk.match(
+        /<tbody id="form:onglets:[^"]+_data"[^>]*>([\s\S]*?)<\/tbody>/
+    )?.[1];
+    if (!tbody || tbody.includes("ui-datatable-empty-message")) return [];
+
+    const labels: string[] = [];
+    for (const m of tbody.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)) {
+        const cells = [...(m[1] ?? "").matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)]
+            .map((c) => stripTags(c[1] ?? ""));
+        const label = cells[1] ?? "";
+        if (label) labels.push(label);
+    }
+    return labels;
+}
+
+/** Promotion labels end with the school year; course groups do not. */
+const isPromotionLabel = (label: string) => / - 20\d{2}\/20\d{2}$/.test(label);
+
+/**
+ * Open one event's detail dialog and read its Apprenants tab. The eventSelect
+ * is a JSF behavior: primefaces.js sends javax.faces.behavior.event and
+ * javax.faces.partial.event, and schedule.js adds `${id}_selectedEventId` —
+ * without the behavior params Aurion merely re-renders an empty dialog.
+ */
+async function requestParticipants(
+    session: Session,
+    page: GroupPlanning,
+    viewState: string,
+    eventId: string
+): Promise<{
+    students: PalantirStudent[];
+    groupLabels: string[];
+    viewState: string;
+}> {
+    const body = formFields(page.body);
+    body.set("javax.faces.partial.ajax", "true");
+    body.set("javax.faces.source", page.scheduleId);
+    body.set("javax.faces.partial.execute", page.scheduleId);
+    body.set(
+        "javax.faces.partial.render",
+        "form:modaleDetail form:confirmerSuppression"
+    );
+    body.set("javax.faces.behavior.event", "eventSelect");
+    body.set("javax.faces.partial.event", "eventSelect");
+    body.set(`${page.scheduleId}_selectedEventId`, eventId);
+    body.set("form", "form");
+    body.set("form:offsetFuseauNavigateur", "-7200000");
+    body.set("javax.faces.ViewState", viewState);
+
+    const res = await session.client.post(page.url, {
+        body: body.toString(),
+        responseType: "text",
+    });
+    if (res.body.includes("<error-name>")) {
+        throw new Error("dialogue d'événement refusé par Aurion");
+    }
+    return {
+        students: parseParticipants(res.body),
+        groupLabels: parseGroupLabels(res.body),
+        viewState: parsePartialViewState(res.body) || viewState,
+    };
+}
+
+/** How many distinct courses of a promotion are opened for its roster. */
+const ROSTER_COURSES = 6;
+
+/** The time range is the only reliable anchor of an Aurion title. */
+const timeRangeLine = /^\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}$/;
+
+/** Course, type and teacher out of a lesson title, counted from the time range. */
+function readCourseFields(title: string): {
+    course: string;
+    type: string;
+    teacher: string;
+} {
+    const lines = title.split("\n").map((l) => l.trim()).filter(Boolean);
+    const timeIndex = lines.findIndex((line) => timeRangeLine.test(line));
+    if (timeIndex < 2) {
+        return { course: lines.join(" "), type: "", teacher: "" };
+    }
+    return {
+        course: lines[timeIndex - 2] ?? "",
+        type: lines[timeIndex - 1] ?? "",
+        teacher: lines[timeIndex + 1] ?? "",
+    };
+}
+
+/**
+ * A promotion's students, and its own lessons over the window. The
+ * whole-class courses (a CI, a COURS_TD) list every student of the
+ * class, so their roster contains every TD/TP subgroup roster — the
+ * class set is the one the other candidate sets are subsets of.
+ * Candidates listing another promotion in their Groupes tab are
+ * skipped outright (a shared M&T module, a joint ADIMAKER A1+A2
+ * visit: their participants mix several classes — live on
+ * 2026-10-04, 6 strangers into CPG2-MPI's roster, 126 students on
+ * ADIMAKER A1's single event). A union would be wrong, and so is a
+ * count-based mode (CIR1's two TPs share the same 15 students and
+ * would outvote its CI of 36). Roster failures are the caller's to
+ * swallow: students are a bonus, never worth failing a planning over.
+ */
+async function fetchGroupRoster(
+    session: Session,
+    ctx: MenuContext,
+    node: PalantirPlanningNode,
+    promotion: PalantirGroup,
+    window: HarvestWindow
+): Promise<{ students: PalantirStudent[]; lessons: PalantirLesson[] }> {
+    const promotionLabel = promotion.label;
+    const choice = await openChoice(session, ctx, node);
+    const { tableId, submitId } = parseChoiceIds(choice.body);
+    const page = await openGroupPlanning(
+        session,
+        choice.url,
+        choice.body,
+        tableId,
+        submitId,
+        [promotion.rowKey]
+    );
+
+    // One pass over the full harvest window: the same events feed the roster
+    // candidates AND the promotion's own lesson list (see the return). The
+    // whole-class courses dominate the frequency ranking over the window
+    // just like over a single week.
+    const fetched = await requestEvents(session, page, window);
+    const events = fetched.events;
+    let viewState = fetched.viewState;
+    const ownLessons = events.filter(
+        (e): e is PalantirLesson => typeof e?.id === "string"
+    );
+
+    // One representative per distinct course, the most frequent first —
+    // the whole-class courses repeat several times a week, a shared module
+    // once, so frequency keeps the strangers out of the candidate list.
+    const byCourse = new Map<
+        string,
+        { representative: PalantirLesson; frequency: number }
+    >();
+    for (const event of events) {
+        if (typeof event?.id !== "string") continue;
+        const { course, type, teacher } = readCourseFields(event.title);
+        const signature = `${course}|${type}|${teacher}`;
+        const existing = byCourse.get(signature);
+        if (existing) {
+            existing.frequency += 1;
+            continue;
+        }
+        byCourse.set(signature, { representative: event, frequency: 1 });
+    }
+    const candidates = [...byCourse.values()]
+        .sort((a, b) => b.frequency - a.frequency)
+        .slice(0, ROSTER_COURSES);
+
+    const sets = new Map<string, { students: PalantirStudent[]; count: number }>();
+    for (const candidate of candidates) {
+        const res = await requestParticipants(
+            session,
+            page,
+            viewState,
+            candidate.representative.id
+        );
+        viewState = res.viewState;
+        // Keep only the promotion's own events: a course listing another
+        // promotion (a shared module, a joint ADIMAKER A1+A2 visit) brings
+        // strangers in — better no roster at all than a wrong one. Events
+        // not listing this promotion at all are subgroup-only courses.
+        const foreign = res.groupLabels.some(
+            (label) =>
+                isPromotionLabel(label) && label !== promotionLabel
+        );
+        const ours = res.groupLabels.includes(promotionLabel);
+        if (res.students.length && ours && !foreign) {
+            const key = res.students
+                .map((s) => `${s.lastName}|${s.firstName}`)
+                .sort()
+                .join("\n");
+            const bucket = sets.get(key);
+            if (bucket) bucket.count += 1;
+            else sets.set(key, { students: res.students, count: 1 });
+        }
+        await sleep(DELAY_MS);
+    }
+
+    // The class roster is the set that contains the others: a whole-class
+    // course lists everyone, so every TD/TP subgroup roster is a subset of
+    // it. A count-based mode would pick a TP group whose members share
+    // several courses (CIR1's two TPs, same 15 students, outweighed its CI
+    // of 36), and a union would leak cross-promotion modules in.
+    let best: { students: PalantirStudent[]; score: number } | null = null;
+    for (const [key, { students, count }] of sets) {
+        const mine = new Set(key.split("\n"));
+        let score = count - 1;
+        for (const other of sets.keys()) {
+            if (other === key) continue;
+            if (other.split("\n").every((student) => mine.has(student))) {
+                score += 1;
+            }
+        }
+        const wins =
+            !best ||
+            score > best.score ||
+            (score === best.score && students.length > best.students.length);
+        if (wins) best = { students, score };
+    }
+    return { students: best?.students ?? [], lessons: ownLessons };
 }
 
 /** Ids of the selection DataTable and of its "Voir planning" button. */
@@ -352,6 +638,39 @@ export async function harvestPlanning(
         groups.map((g) => g.rowKey),
         window
     );
+
+    // The roster pass opens one planning per Promotion row: on the merged
+    // planning above, an event's participants cannot be told apart between
+    // the ticked classes. A failed pass is swallowed — students and the
+    // class's own lessons are a bonus, never worth failing the planning
+    // over.
+    const knownIds = new Set(lessons.map((lesson) => lesson.id));
+    for (const promotion of groups.filter((g) => g.type === "Promotion")) {
+        try {
+            const { students, lessons: ownLessons } = await fetchGroupRoster(
+                session,
+                choice.ctx,
+                node,
+                promotion,
+                window
+            );
+            if (students.length) promotion.students = students;
+            // The class's own planning: lets /palantir/planning serve it
+            // from the index instead of a live ~15s fetch. A solo view can
+            // carry an event the bulk pass missed — index it too.
+            promotion.lessonIds = ownLessons.map((lesson) => lesson.id);
+            for (const lesson of ownLessons) {
+                if (knownIds.has(lesson.id)) continue;
+                knownIds.add(lesson.id);
+                lessons.push(lesson);
+            }
+        } catch {
+            // Left without students and lesson ids; the next weekly
+            // harvest retries.
+        }
+        await sleep(DELAY_MS);
+    }
+
     return { groups, lessons, ctx: choice.ctx };
 }
 
