@@ -3,11 +3,10 @@ Description=Palantir harvester - weekly trigger (Sunday 00:05 Paris)
 
 [Timer]
 # The index expires on the Saturday-to-Sunday night; harvest right after,
-# at a quiet hour with no deploy waves around. The harvester machine runs
-# on the London timezone, which tracks Paris DST on the same dates, so
-# Saturday 23:05 local is always Sunday 00:05 Paris. Persistent replays a
-# missed run after a reboot.
-OnCalendar=Sat *-*-* 23:05:00
+# at a quiet hour with no deploy waves around. 23:05 UTC is 00:05 Paris
+# year-round (the harvester machine runs on the London timezone). Persistent
+# replays a missed run after a reboot.
+OnCalendar=Sun *-*-* 23:05:00 UTC
 Persistent=true
 
 [Install]
