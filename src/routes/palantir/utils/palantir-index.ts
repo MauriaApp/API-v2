@@ -326,6 +326,36 @@ export function lessonsForGroup(
 }
 
 /**
+ * Indexed lessons of a teacher, clipped to an optional range — read off
+ * the lesson titles' teacher line, the same names /palantir/people counts.
+ * Two spellings of one teacher ("Monsieur BELLEUDY" and "BELLEUDY") are
+ * two separate cards in the people search, and each card only opens its
+ * own lessons, matching the count it displays.
+ */
+export function lessonsForTeacher(
+    name: string,
+    start?: number,
+    end?: number
+): PalantirLesson[] {
+    if (!PALANTIR_ENABLED || !data) return [];
+    const needle = normalize(name);
+    if (!needle) return [];
+
+    const lessons: PalantirLesson[] = [];
+    for (const lesson of data.lessons.values()) {
+        const teacher = readTitleTeacher(lesson.title);
+        if (!teacher || normalize(teacher) !== needle) continue;
+        if (start !== undefined || end !== undefined) {
+            const at = lessonEpoch(lesson);
+            if (start !== undefined && at < start) continue;
+            if (end !== undefined && at > end) continue;
+        }
+        lessons.push(lesson);
+    }
+    return lessons.sort((a, b) => a.start.localeCompare(b.start));
+}
+
+/**
  * Teachers and students matching a query — the admin-only people search
  * behind /palantir/people. Teachers are read off the indexed lesson
  * titles (the line after the time range), students off the promotion
@@ -364,6 +394,9 @@ export function searchPeople(
                 lastName: student.lastName,
                 className: group.label || group.code,
                 groupId: `${group.menuid}:${group.rowKey}`,
+                // The index has no colles roster: /palantir/people resolves
+                // the group server-side and overrides this.
+                collesGroup: null,
             });
         }
     }

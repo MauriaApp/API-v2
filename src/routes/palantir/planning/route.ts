@@ -2,12 +2,14 @@ import { FastifyInstance } from "fastify";
 import Sentry from "@sentry/node";
 import { PalantirPlanningRequest } from "../../../types/palantir";
 import { SessionManager } from "../../aurion/utils/session-manager";
+import { isAdminEmail } from "../utils/admin";
 import { fetchGroupLessons } from "../utils/harvester";
 import {
     currentWindow,
     getStatus,
     lessonsFor,
     lessonsForGroup,
+    lessonsForTeacher,
     resolveGroup,
 } from "../utils/palantir-index";
 import { statusSchema } from "../status/route";
@@ -18,7 +20,7 @@ export async function palantirPlanningRoute(fastify: FastifyInstance) {
         {
             schema: {
                 description:
-                    "Emploi du temps d'une entité renvoyée par /palantir/search. Salles et classes sont servies depuis l'index (le pass des rosters récolte le planning propre de chaque promotion) ; une classe sans leçons indexées est récupérée en direct sur Aurion, ~15 s. ATTENTION: Les timestamps sont en MILLISECONDES !",
+                    "Emploi du temps d'une entité renvoyée par /palantir/search. Salles et classes sont servies depuis l'index (le pass des rosters récolte le planning propre de chaque promotion) ; une classe sans leçons indexées est récupérée en direct sur Aurion, ~15 s. Le kind \"teacher\" est réservé aux admins (même contrôle que la recherche de personnes) et lit l'index par nom. ATTENTION: Les timestamps sont en MILLISECONDES !",
                 body: {
                     type: "object",
                     properties: {
@@ -26,7 +28,7 @@ export async function palantirPlanningRoute(fastify: FastifyInstance) {
                         password: { type: "string" },
                         kind: {
                             type: "string",
-                            enum: ["room", "group"],
+                            enum: ["room", "group", "teacher"],
                         },
                         id: {
                             type: "string",
@@ -100,6 +102,36 @@ export async function palantirPlanningRoute(fastify: FastifyInstance) {
             const { email, password, kind, id, startTimestamp, endTimestamp } =
                 request.body;
             try {
+                // A teacher is read straight from the index, like a room —
+                // the id is the name the admin-only people search returned.
+                // Admin-only, like that search: the kind sits in the public
+                // schema, but without the people search to list names, a
+                // non-admin probe gets the same 404 as an unknown route.
+                if (kind === "teacher") {
+                    if (!(await isAdminEmail(email))) {
+                        return reply.callNotFound();
+                    }
+                    const session = new SessionManager();
+                    try {
+                        // Cache-allowed login, the same posture as the
+                        // people search: a live session for this email
+                        // implies the password was verified when it was
+                        // created.
+                        await session.login(email, password);
+                    } catch {
+                        return reply.callNotFound();
+                    }
+                    return {
+                        success: true,
+                        data: lessonsForTeacher(
+                            id,
+                            startTimestamp,
+                            endTimestamp
+                        ),
+                        status: getStatus(),
+                    };
+                }
+
                 if (kind === "room") {
                     return {
                         success: true,

@@ -1,6 +1,13 @@
 /** What a Palantir search result points at. */
 export type PalantirEntityKind = "room" | "group";
 
+/**
+ * What /palantir/planning accepts: the index kinds, plus teachers — a
+ * teacher has no index entity, their lessons are read off the indexed
+ * titles by name.
+ */
+export type PalantirPlanningKind = PalantirEntityKind | "teacher";
+
 export interface PalantirEntity {
     kind: PalantirEntityKind;
     /** Opaque key handed back to /palantir/planning to get the schedule. */
@@ -124,7 +131,7 @@ export interface PalantirSearchRequest {
 export interface PalantirPlanningRequest {
     email: string;
     password: string;
-    kind: PalantirEntityKind;
+    kind: PalantirPlanningKind;
     id: string;
     startTimestamp?: number;
     endTimestamp?: number;
@@ -144,6 +151,12 @@ export interface PalantirStudentResult {
     className: string;
     /** The class as a Palantir entity id, so a click can open its planning. */
     groupId: string;
+    /**
+     * The student's khôlles group, resolved server-side off the private
+     * colles roster (colles_students in Supabase) — never the roster
+     * itself. Null when the name doesn't match exactly one roster row.
+     */
+    collesGroup: string | null;
 }
 
 /** The answer of /palantir/people — admin-only, never in /palantir/search. */
