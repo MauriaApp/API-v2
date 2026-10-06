@@ -14,17 +14,127 @@ export type PrintBalance = {
     bonus: number;
 };
 
+// Entités nommées courantes (Latin-1 / HTML4) — les noms de fichiers
+// SafeQ encodent les accents ainsi ("&eacute;", "&deg;"…).
+const NAMED_ENTITIES: Record<string, string> = {
+    amp: "&",
+    lt: "<",
+    gt: ">",
+    quot: '"',
+    apos: "'",
+    euro: "€",
+    pound: "£",
+    yen: "¥",
+    cent: "¢",
+    copy: "©",
+    reg: "®",
+    trade: "™",
+    deg: "°",
+    micro: "µ",
+    middot: "·",
+    bull: "•",
+    hellip: "…",
+    ndash: "–",
+    mdash: "—",
+    lsquo: "‘",
+    rsquo: "’",
+    ldquo: "“",
+    rdquo: "”",
+    laquo: "«",
+    raquo: "»",
+    times: "×",
+    divide: "÷",
+    sup1: "¹",
+    sup2: "²",
+    sup3: "³",
+    frac12: "½",
+    frac14: "¼",
+    frac34: "¾",
+    nbsp: " ",
+    Agrave: "À",
+    Aacute: "Á",
+    Acirc: "Â",
+    Atilde: "Ã",
+    Auml: "Ä",
+    Aring: "Å",
+    AElig: "Æ",
+    Ccedil: "Ç",
+    Egrave: "È",
+    Eacute: "É",
+    Ecirc: "Ê",
+    Euml: "Ë",
+    Igrave: "Ì",
+    Iacute: "Í",
+    Icirc: "Î",
+    Iuml: "Ï",
+    Ntilde: "Ñ",
+    Ograve: "Ò",
+    Oacute: "Ó",
+    Ocirc: "Ô",
+    Otilde: "Õ",
+    Ouml: "Ö",
+    Oslash: "Ø",
+    Ugrave: "Ù",
+    Uacute: "Ú",
+    Ucirc: "Û",
+    Uuml: "Ü",
+    Yacute: "Ý",
+    agrave: "à",
+    aacute: "á",
+    acirc: "â",
+    atilde: "ã",
+    auml: "ä",
+    aring: "å",
+    aelig: "æ",
+    ccedil: "ç",
+    egrave: "è",
+    eacute: "é",
+    ecirc: "ê",
+    euml: "ë",
+    igrave: "ì",
+    iacute: "í",
+    icirc: "î",
+    iuml: "ï",
+    ntilde: "ñ",
+    ograve: "ò",
+    oacute: "ó",
+    ocirc: "ô",
+    otilde: "õ",
+    ouml: "ö",
+    oslash: "ø",
+    ugrave: "ù",
+    uacute: "ú",
+    ucirc: "û",
+    uuml: "ü",
+    yacute: "ý",
+    yuml: "ÿ",
+};
+
 function decodeEntities(text: string): string {
-    return text
-        .replace(/&euro;/g, "€")
-        .replace(/&amp;/g, "&")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/&#(\d+);/g, (_, code) =>
-            String.fromCharCode(Number(code))
-        );
+    // Une seule passe : `&amp;eacute;` devient `&eacute;` tel quel, sans
+    // être re-décodé (pas de double-unescaping). Les noms d'entités
+    // peuvent contenir des chiffres ("&frac12;", "&sup2;").
+    return text.replace(
+        /&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z][a-zA-Z0-9]*);/g,
+        (match, body: string) => {
+            if (body.startsWith("#")) {
+                const hex = body[1] === "x";
+                const code = parseInt(
+                    hex ? body.slice(2) : body.slice(1),
+                    hex ? 16 : 10
+                );
+                if (!Number.isFinite(code) || code <= 0 || code > 0x10ffff) {
+                    return match;
+                }
+                try {
+                    return String.fromCodePoint(code);
+                } catch {
+                    return match;
+                }
+            }
+            return NAMED_ENTITIES[body] ?? match;
+        }
+    );
 }
 
 function parseAmount(html: string, className: string): number {
