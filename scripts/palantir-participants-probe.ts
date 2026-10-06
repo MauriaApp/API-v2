@@ -49,8 +49,15 @@ const isChoiceScreen = (body: string) =>
     body.includes("Voir planning") &&
     !body.includes("<error-name>");
 
-const stripTags = (html: string) =>
-    html.replace(/<[^>]*>/g, "").trim();
+const stripTags = (html: string) => {
+    let sanitized = html;
+    let previous: string;
+    do {
+        previous = sanitized;
+        sanitized = sanitized.replace(/<[^>]*>/g, "");
+    } while (sanitized !== previous);
+    return sanitized.trim();
+};
 
 /** Copy of the harvester's parseChoiceIds (private there). */
 function parseChoiceIds(body: string) {
@@ -235,11 +242,9 @@ async function main() {
             const cells = [...(m[1] ?? "").matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)]
                 .map((c) => c[1] ?? "")
                 .map((c) =>
-                    c
-                        .replace(/<[^>]*>/g, "")
+                    stripTags(c)
                         .replace(/&amp;/g, "&")
                         .replace(/&nbsp;/g, " ")
-                        .trim()
                 );
             if (cells.length < 2) continue;
             if (cells[0] && cells[1]) students.push([cells[0], cells[1]]);
@@ -257,10 +262,7 @@ async function main() {
         for (const m of tbody.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)) {
             const code = (m[1] ?? "")
                 .match(/<td[^>]*>([\s\S]*?)<\/td>/)?.[1];
-            const clean = (code ?? "")
-                .replace(/<[^>]*>/g, "")
-                .replace(/&amp;/g, "&")
-                .trim();
+            const clean = stripTags(code ?? "").replace(/&amp;/g, "&");
             if (clean) codes.push(clean);
         }
         return codes;
