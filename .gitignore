@@ -3,6 +3,8 @@
 .env.dev
 *.DS_Store
 
+/scripts/dumps/
+
 *.js
 *.map
 *.d.ts
