@@ -18,14 +18,22 @@ const normalize = (value: string) =>
         .replace(/[^a-z]/g, "");
 
 // Aurion logins look like "prenom.nom@ecole.com". The surname half is
-// sometimes shortened, so it is only ever compared as a prefix.
+// sometimes shortened, so it is only ever compared as a prefix. Compound
+// given names make the login "mourad-x-y-z.adegnika": gluing every segment
+// after the first into one string buries the surname behind the given
+// name's extra words, so the surname is matched against two candidates —
+// the full glued remainder (multi-segment surnames, the previous behaviour)
+// and the last segment alone (compound given names).
 const splitEmail = (email: string) => {
     const local = email.split("@")[0] ?? "";
     const parts = local
         .split(/[._-]+/)
         .map(normalize)
         .filter(Boolean);
-    return { firstName: parts[0] ?? "", lastName: parts.slice(1).join("") };
+    const lastNames = [parts.slice(1).join("")];
+    const last = parts[parts.length - 1] ?? "";
+    if (parts.length > 1 && !lastNames.includes(last)) lastNames.push(last);
+    return { firstName: parts[0] ?? "", lastNames };
 };
 
 const isPrefixOf = (value: string, prefix: string) =>
@@ -64,30 +72,35 @@ function findColleStudent(
     rows: ColleStudentRow[],
     confirmedCpg: boolean
 ) {
-    const { firstName, lastName } = splitEmail(email);
+    const { firstName, lastNames } = splitEmail(email);
     if (!firstName) return null;
-    if (!confirmedCpg && !lastName) return null;
+    if (!confirmedCpg && !lastNames.some(Boolean)) return null;
     // Too short to tell anyone apart (e.g. "louis.s2026@…"): given name only.
     // Only allowed once the caller is confirmed CPG — otherwise a surname is
     // mandatory.
     const useSurname = confirmedCpg
-        ? lastName.length >= MIN_PREFIX_LENGTH
+        ? lastNames.some((name) => name.length >= MIN_PREFIX_LENGTH)
         : true;
     const exact = !confirmedCpg;
 
     // All classes are searched as one roster: homonyms span them (two Louis,
     // two Thomas, two Théophile…), so stopping at the first class with a
     // single candidate would hand a student someone else's colles.
+    const surnameMatch = (row: ColleStudentRow) =>
+        lastNames.some((name) =>
+            matches(normalize(row.last_name), name, exact)
+        );
+
     const candidates = rows.filter(
         (row) =>
             matches(givenName(row), firstName, exact) &&
-            (!useSurname || matches(normalize(row.last_name), lastName, exact))
+            (!useSurname || surnameMatch(row))
     );
     if (candidates.length === 1 && candidates[0]) return candidates[0];
 
     // Still ambiguous: an exact surname beats a mere prefix.
-    const exactSurname = candidates.filter(
-        (row) => normalize(row.last_name) === lastName
+    const exactSurname = candidates.filter((row) =>
+        lastNames.some((name) => normalize(row.last_name) === name)
     );
     if (exactSurname.length === 1 && exactSurname[0]) return exactSurname[0];
 
