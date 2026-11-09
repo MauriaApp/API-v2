@@ -17,22 +17,26 @@ const normalize = (value: string) =>
         .toLowerCase()
         .replace(/[^a-z]/g, "");
 
-// Aurion logins look like "prenom.nom@ecole.com". The surname half is
-// sometimes shortened, so it is only ever compared as a prefix. Compound
-// given names make the login "mourad-x-y-z.adegnika": gluing every segment
-// after the first into one string buries the surname behind the given
-// name's extra words, so the surname is matched against two candidates —
-// the full glued remainder (multi-segment surnames, the previous behaviour)
-// and the last segment alone (compound given names).
+// Aurion logins look like "prenom.nom@ecole.com", with the same separator
+// for compound names — and nothing marks where the given name ends and the
+// surname begins. Compound given names ("mourad-x-y-z.adegnika") and
+// multi-segment surnames ("jean.dupont-durand") already hide the surname
+// inside the glued remainder, and a student can have both at once
+// ("erika-merveille.ndongmo-zebaze" = "Erika Merveille NDONGMO ZEBAZE"),
+// where the surname is the last segments glued but not the last one alone.
+// Every suffix of the token list is therefore a surname candidate: the full
+// glued remainder, every intermediate suffix, and the last segment alone.
 const splitEmail = (email: string) => {
     const local = email.split("@")[0] ?? "";
     const parts = local
         .split(/[._-]+/)
         .map(normalize)
         .filter(Boolean);
-    const lastNames = [parts.slice(1).join("")];
-    const last = parts[parts.length - 1] ?? "";
-    if (parts.length > 1 && !lastNames.includes(last)) lastNames.push(last);
+    const lastNames = [
+        ...new Set(
+            parts.slice(1).map((_, i) => parts.slice(i + 1).join(""))
+        ),
+    ];
     return { firstName: parts[0] ?? "", lastNames };
 };
 
