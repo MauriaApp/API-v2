@@ -1,5 +1,7 @@
 // PageParser.ts
 
+import type { EventDetails, Person } from "../../../types/aurion";
+
 export class PageParser {
     static parseViewState(body: string): string {
         const match = body.match(
@@ -141,5 +143,62 @@ export class PageParser {
                 teacher: cells[4],
             };
         });
+    }
+
+    /**
+     * The event dialog returned by Aurion's `eventSelect` ajax call. Tabs
+     * (Intervenants, Apprenants (N), Groupes…) are located by their label,
+     * then resolved to their panel through the tab's href, because the
+     * `j_idt*` ids of the tables themselves are not stable.
+     */
+    static parseEventDetails(body: string): EventDetails {
+        if (!body.includes("form:modaleDetail")) {
+            throw new Error("Détail de l'événement non trouvé");
+        }
+        const decode = (v: string) =>
+            v
+                .replace(/<[^>]*>/g, "")
+                .replace(/&amp;/g, "&")
+                .replace(/&#39;|&apos;/g, "'")
+                .replace(/&quot;/g, '"')
+                .replace(/&lt;/g, "<")
+                .replace(/&gt;/g, ">")
+                .trim();
+
+        const rowsOf = (label: RegExp): string[][] => {
+            const tab = [
+                ...body.matchAll(/<a href="#([^"]+)"[^>]*>([^<]*)<\/a>/g),
+            ].find((m) => label.test(m[2] ?? ""));
+            if (!tab?.[1]) return [];
+            const start = body.indexOf(`id="${tab[1]}"`);
+            if (start === -1) return [];
+            const next = body.indexOf(
+                'class="ui-tabs-panel',
+                body.indexOf(">", start)
+            );
+            const panel = body.slice(start, next === -1 ? undefined : next);
+            return [
+                ...panel.matchAll(/<tr data-ri="[^>]*>([\s\S]*?)<\/tr>/g),
+            ].map((row) =>
+                [...(row[1] ?? "").matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(
+                    (c) => decode(c[1] ?? "")
+                )
+            );
+        };
+
+        const people = (label: RegExp): Person[] =>
+            rowsOf(label).map(([lastName, firstName]) => ({
+                lastName: lastName ?? "",
+                firstName: firstName ?? "",
+            }));
+
+        return {
+            teachers: people(/^Intervenants/),
+            students: people(/^Apprenants/),
+            groups: rowsOf(/^Groupes/).map(([code, label]) => ({
+                code: code ?? "",
+                label: label ?? "",
+            })),
+        };
     }
 }
